@@ -1,0 +1,108 @@
+// Summarizes earlier transcript text via Groq for the live suggestions context window.
+
+import type { NextRequest } from "next/server";
+import { NextResponse } from "next/server";
+import { MODELS, SUMMARIZATION_PROMPT } from "@/lib/prompts";
+
+const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
+
+interface SummarizeBody {
+  earlierTranscript?: unknown;
+}
+
+function groqChatFailureMessage(parsed: unknown): string {
+  if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
+    return "Summarization failed";
+  }
+  const container = parsed as { error?: { message?: unknown } };
+  const message = container.error?.message;
+  return typeof message === "string" ? message : "Summarization failed";
+}
+
+function extractAssistantText(parsed: unknown): string | null {
+  if (typeof parsed !== "object" || parsed === null) {
+    return null;
+  }
+  const root = parsed as {
+    choices?: Array<{ message?: { content?: unknown } }>;
+  };
+  const content = root.choices?.[0]?.message?.content;
+  return typeof content === "string" ? content : null;
+}
+
+export async function POST(
+  request: NextRequest,
+): Promise<NextResponse<{ summary: string } | { error: string }>> {
+  const apiKey = request.headers.get("x-groq-api-key");
+  if (!apiKey?.trim()) {
+    return NextResponse.json(
+      { error: "No API key provided" },
+      { status: 401 },
+    );
+  }
+
+  let body: unknown;
+  try {
+    body = (await request.json()) as unknown;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid JSON body" },
+      { status: 400 },
+    );
+  }
+
+  const earlierTranscript =
+    typeof body === "object" &&
+    body !== null &&
+    "earlierTranscript" in body &&
+    typeof (body as SummarizeBody).earlierTranscript === "string"
+      ? (body as { earlierTranscript: string }).earlierTranscript
+      : "";
+
+  if (earlierTranscript === "") {
+    return NextResponse.json({ summary: "" });
+  }
+
+  const groqResponse = await fetch(GROQ_CHAT_URL, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey.trim()}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      model: MODELS.summarization,
+      messages: [
+        { role: "system", content: SUMMARIZATION_PROMPT },
+        { role: "user", content: earlierTranscript },
+      ],
+      max_tokens: 200,
+      temperature: 0.3,
+    }),
+  });
+
+  const rawText = await groqResponse.text();
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText) as unknown;
+  } catch {
+    return NextResponse.json(
+      { error: "Invalid response from summarization service" },
+      { status: 502 },
+    );
+  }
+
+  if (!groqResponse.ok) {
+    const message = groqChatFailureMessage(parsed);
+    return NextResponse.json({ error: message }, { status: groqResponse.status });
+  }
+
+  const text = extractAssistantText(parsed);
+  if (text === null) {
+    return NextResponse.json(
+      { error: "Invalid summarization response" },
+      { status: 502 },
+    );
+  }
+
+  return NextResponse.json({ summary: text.trim() });
+}

@@ -58,7 +58,7 @@ function pickMimeType(): string | undefined {
   return undefined;
 }
 
-export function useMicRecorder(): UseMicRecorderResult {
+export default function useMicRecorder(): UseMicRecorderResult {
   const [isRecording, setIsRecording] = useState(false);
   const [transcriptChunks, setTranscriptChunks] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);

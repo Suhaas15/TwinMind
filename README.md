@@ -6,7 +6,7 @@ TwinMind Live Suggestions is a **meeting copilot**: three columns, one conversat
 
 I built this as a **take-home for TwinMind**. The product bet is simple: during a live call, people don’t need more noise—they need the *right* suggestion at the *right* moment. This repo is my working answer to that: capture what’s being said, turn it into text on a cadence you can trust, and leave room for richer “live suggestions” and chat layers to grow on top.
 
-Right now you’ll see the shell, the mic pipeline, and the bones of where suggestions and chat will sit. The fun part (prompting, batching, context) is still ahead—but the foundation is honest about what it’s trying to do.
+Right now you’ll see the shell, the mic pipeline, live suggestion batches (with the context windowing and prompts described below), and the chat column still waiting for wiring. The foundation and the middle column are doing real work; chat is the next big hook-up.
 
 ---
 
@@ -33,15 +33,15 @@ If nothing happens, check the mic permission prompt and the network tab on `/api
 
 **Tailwind CSS** — No component library. I wanted speed and a dark, dense UI without fighting a design system I didn’t own. Tailwind let me iterate on spacing and borders until the three columns *felt* like a control room, not a slide deck.
 
-**No database, no auth** — For this assignment, persistence would be a distraction. Everything interesting lives in **React state for the session**: recording, transcript chunks, and (soon) suggestion batches and chat messages. If you refresh, you’re starting a new mental session anyway—that matches how I’d use a copilot in a real meeting.
+**No database, no auth** — For this assignment, persistence would be a distraction. Everything interesting lives in **React state for the session**: recording, transcript chunks, suggestion batches, and (soon) chat messages. If you refresh, you’re starting a new mental session anyway—that matches how I’d use a copilot in a real meeting.
 
-**Three Groq calls (where we’re headed)** — The architecture assumes three touchpoints:
+**Three Groq call families** — The architecture lines up like this:
 
 1. **Whisper** (via Groq’s OpenAI-compatible transcription endpoint) for chunked speech-to-text.
-2. **GPT-OSS 120B** for **live suggestions** (batched, fast, biased toward usefulness over cleverness).
+2. **GPT-OSS 120B** for **summarization + live suggestions** — a small summarize hop, then structured suggestion batches in the middle column.
 3. **GPT-OSS 120B** again for **chat**—longer answers when a suggestion isn’t enough.
 
-Only the first is wired end-to-end today; the other two are deliberate placeholders in the layout so the UI doesn’t lie about what’s coming.
+Transcription and the suggestion pipeline (summarize + suggest) are live; chat is still the column waiting on Phase 4.
 
 ---
 
@@ -53,17 +53,21 @@ There’s one sharp edge: when you stop recording, MediaRecorder often emits a *
 
 ---
 
-## Prompt Strategy (we’ll grow this)
+## Prompt Strategy
 
-This section is intentionally a **skeleton**. As the suggestion engine and chat panel land, I’ll document the actual prompts, negative constraints, and “what we inject from transcript vs. what we leave out” rules here.
+This is the part I expect to keep tuning, but the **shape** of the system is set: how we window context, why we burn two Groq calls before we ever ask for suggestions, and how we keep the model from sounding like a mail-merge template.
 
-For now, the placeholders I owe future-me (and you):
+**Context windowing — two layers, not one wall of text.** I split the transcript into a **recent** slice and an **earlier** slice. The last chunk of text (roughly the last few minutes — about **3,000 characters** verbatim) is what the suggestion model should lean on hardest: that’s the live edge of the conversation. Everything *before* that tail gets a different job. I take up to **4,000 characters** from the end of that “earlier” region — i.e. the most relevant older material — and run it through a **dedicated summarization call** first. The prompt asks for a tight **3–5 sentence** summary: topics, decisions, names, numbers, commitments. That summary becomes **EARLIER CONTEXT SUMMARY** in the suggestion prompt; the verbatim tail becomes **RECENT TRANSCRIPT**. Net effect: the model always gets crisp, recent detail *plus* a compressed memory of what came before, without drowning in ancient transcript nobody in the room is thinking about anymore.
 
-- **Suggestions prompt** — tone, length limits, how we cite uncertainty, and how we avoid repeating what the room already said.
-- **Chat prompt** — when to be verbose, when to refuse, and how we relate back to the active suggestion (if any).
-- **Context window strategy** — how much transcript we keep “hot,” how we summarize older chunks, and when we reset context between meetings.
+**Why two sequential Groq calls for suggestions.** I made this tradeoff on purpose. A fast **summarize** step (`/api/summarize`) before **`/api/suggestions`** buys noticeably better situational awareness once a meeting has been running for a while — the suggestion model isn’t inventing “what happened earlier” from a truncated paste. The summary is capped at **200 tokens**, so the extra hop stays small in latency. If production ever screams about milliseconds, we can collapse summarize + suggestions into a single call; I’d rather start with clarity and simplify than start fuzzy and debug why suggestions drift.
 
-Check back after Phase 3–4; that’s when this file stops being polite fiction and starts being a spec.
+**Suggestion types — five labels, not a bingo card.** I defined five types — **question**, **talking_point**, **answer**, **fact_check**, **clarify** — and I’m explicit in the prompt: **do not** produce one of each mechanically. The model picks the **three** types that actually fit *this* moment. That single rule is a lot of what keeps output from feeling formulaic; the types are vocabulary for the model, not a checklist it has to tick every refresh.
+
+**JSON Schema mode — trust the wire format.** Suggestions run on **GPT-OSS 120B** with Groq’s **structured output** (`json_schema`) so the response has to match our object shape: exactly three items, each with `type`, `preview`, and `detail`. If the HTTP call succeeds, I treat the payload as structurally valid — no defensive regex archaeology. The route still sanity-checks because I’m not reckless, but the contract is “schema or bust,” which lines up cleanly with our TypeScript types.
+
+**Previous suggestions in the loop.** Every suggestion request includes the **previews** from the last batch (newline-separated). That’s how we tell the model: don’t recycle the same three blurbs every 30 seconds when the room hasn’t actually moved. It’s cheap context, and it makes the refresh cadence feel less like a broken record.
+
+**Chat** — the **`CHAT_PROMPT`** in `lib/prompts.ts` is wired for Phase 4: ground answers in the full transcript, admit when something wasn’t said, stay practical. I’ll deepen that section once the panel talks to the API.
 
 ---
 
@@ -79,10 +83,10 @@ Check back after Phase 3–4; that’s when this file stops being polite fiction
 
 ## What’s Left / Roadmap (for now)
 
-- [ ] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
+- [x] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
 - [ ] **Chat panel wiring (Phase 4)** — thread messages, send pipeline, tie-ins to suggestions.
 - [ ] **Settings modal (Phase 5)** — first-class Groq key entry instead of devtools/localStorage yoga.
 - [ ] **Export (Phase 6)** — transcript + suggestions out of the browser in a format people actually use.
-- [ ] **Prompt tuning (Phase 7)** — turn the “Prompt Strategy” section from outline to gospel.
+- [ ] **Prompt tuning (Phase 7)** — keep pressure-testing summarization + suggestion prompts as real meetings surface edge cases.
 
-If you’re reading this README before those boxes are checked, you’re early—and honestly, that’s the best time to send feedback.
+If you’re reading this README while half the roadmap is still open, you’re not late—you’re just watching the thing get built in public.

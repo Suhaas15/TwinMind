@@ -3,7 +3,6 @@
 // Left column: mic recording controls, errors, guidance, and scrolling transcript chunks.
 
 import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
-import { useMicRecorder } from "@/hooks/useMicRecorder";
 
 interface MicButtonProps {
   isRecording: boolean;
@@ -48,27 +47,33 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
   );
 }
 
-export function MicTranscript(): ReactElement {
-  const {
-    isRecording,
-    transcriptChunks,
-    startRecording,
-    stopRecording,
-    error,
-  } = useMicRecorder();
+interface MicTranscriptProps {
+  transcriptChunks: string[];
+  isRecording: boolean;
+  onTranscriptUpdate: (chunks: string[]) => void;
+  onRecordingChange: (nextRecording: boolean) => void;
+  recordingError: string | null;
+}
 
+export function MicTranscript({
+  transcriptChunks,
+  isRecording,
+  onTranscriptUpdate,
+  onRecordingChange,
+  recordingError,
+}: MicTranscriptProps): ReactElement {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    onTranscriptUpdate(transcriptChunks);
+  }, [transcriptChunks, onTranscriptUpdate]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [transcriptChunks.length]);
 
   function handleMicToggle(): void {
-    if (isRecording) {
-      stopRecording();
-    } else {
-      void startRecording();
-    }
+    onRecordingChange(!isRecording);
   }
 
   return (
@@ -88,8 +93,10 @@ export function MicTranscript(): ReactElement {
       <div className="flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto px-5 py-6">
         <div className="flex flex-col items-center gap-3">
           <MicButton isRecording={isRecording} onToggle={handleMicToggle} />
-          {error ? (
-            <p className="max-w-xs text-center text-xs text-red-500">{error}</p>
+          {recordingError ? (
+            <p className="max-w-xs text-center text-xs text-red-500">
+              {recordingError}
+            </p>
           ) : null}
           <p className="max-w-xs text-center text-sm text-neutral-400">
             Click mic to start. Transcript appends every ~30s.
