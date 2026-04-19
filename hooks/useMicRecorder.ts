@@ -1,13 +1,16 @@
 "use client";
 
-// Captures mic audio via MediaRecorder: full WebM blobs every ~30s (stop/restart on one stream) and POSTs each to /api/transcribe.
+// Captures mic audio: each ~30s the MediaRecorder is stopped so the WebM is self-contained, transcribed, then a new recorder starts on the same stream until the user stops.
 
 import { useCallback, useRef, useState } from "react";
+import { GROQ_API_KEY_HEADER } from "@/lib/prompts";
 
 const CHUNK_INTERVAL_MS = 30000;
 const GROQ_STORAGE_KEY = "groq_api_key";
 /** Final segment blobs below this size skip transcription (e.g. empty flush). */
 const MIN_TRANSCRIBE_BYTES = 1000;
+const TRANSCRIBE_UPLOAD_FILENAME = "chunk.webm";
+const AUDIO_WEBM_FALLBACK_MIME = "audio/webm";
 
 interface TranscribeSuccessResponse {
   text: string;
@@ -70,24 +73,26 @@ export default function useMicRecorder(): UseMicRecorderResult {
   const chunksRef = useRef<Blob[]>([]);
   const mimeTypeRef = useRef<string | undefined>(undefined);
 
-  const cleanupStream = useCallback((): void => {
+  const clearChunkInterval = useCallback((): void => {
     if (chunkIntervalRef.current !== null) {
       clearInterval(chunkIntervalRef.current);
       chunkIntervalRef.current = null;
     }
+  }, []);
+
+  const cleanupStream = useCallback((): void => {
+    clearChunkInterval();
     isStoppingRef.current = false;
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
     }
-  }, []);
+  }, [clearChunkInterval]);
 
   const stopRecording = useCallback((): void => {
-    if (chunkIntervalRef.current !== null) {
-      clearInterval(chunkIntervalRef.current);
-      chunkIntervalRef.current = null;
-    }
+    clearChunkInterval();
+    // User-initiated stop: onstop must tear down the stream, not spin up another recorder.
     isStoppingRef.current = true;
     const recorder = mediaRecorderRef.current;
     setIsRecording(false);
@@ -99,7 +104,7 @@ export default function useMicRecorder(): UseMicRecorderResult {
       cleanupStream();
       mediaRecorderRef.current = null;
     }
-  }, [cleanupStream]);
+  }, [cleanupStream, clearChunkInterval]);
 
   const startRecording = useCallback(async (): Promise<void> => {
     setError(null);
@@ -160,20 +165,20 @@ export default function useMicRecorder(): UseMicRecorderResult {
         void (async (): Promise<void> => {
           const parts = [...chunksRef.current];
           chunksRef.current = [];
-          const mime = mimeTypeRef.current ?? "audio/webm";
+          const mime = mimeTypeRef.current ?? AUDIO_WEBM_FALLBACK_MIME;
           const blob = new Blob(parts, { type: mime });
 
           const key = localStorage.getItem(GROQ_STORAGE_KEY);
           if (blob.size >= MIN_TRANSCRIBE_BYTES && key?.trim()) {
             const formData = new FormData();
-            formData.append("audio", blob, "chunk.webm");
+            formData.append("audio", blob, TRANSCRIBE_UPLOAD_FILENAME);
 
             try {
               const response = await fetch("/api/transcribe", {
                 method: "POST",
                 body: formData,
                 headers: {
-                  "x-groq-api-key": key,
+                  [GROQ_API_KEY_HEADER]: key,
                 },
               });
 
@@ -195,6 +200,7 @@ export default function useMicRecorder(): UseMicRecorderResult {
             }
           }
 
+          // Interval-driven stop leaves isStoppingRef false so we start the next segment on the same stream.
           if (isStoppingRef.current) {
             cleanupStream();
             mediaRecorderRef.current = null;
@@ -243,6 +249,7 @@ export default function useMicRecorder(): UseMicRecorderResult {
     mediaRecorderRef.current = recorder;
     recorder.start();
 
+    // Periodic stop() yields a complete WebM per segment; onstop transcribes then calls start() again until the user stops.
     chunkIntervalRef.current = setInterval(() => {
       if (mediaRecorderRef.current?.state === "recording") {
         mediaRecorderRef.current.stop();

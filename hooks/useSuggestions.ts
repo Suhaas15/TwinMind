@@ -1,10 +1,11 @@
 "use client";
 
-// Fetches summarized earlier context and Groq-structured suggestion batches on a recording-aligned cadence.
+// Fetches /api/summarize then /api/suggestions using windowed transcript text while recording (plus manual refresh).
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   EARLIER_CONTEXT_CHARS,
+  GROQ_API_KEY_HEADER,
   RECENT_CONTEXT_CHARS,
 } from "@/lib/prompts";
 import type { Suggestion, SuggestionBatch } from "@/types/suggestions";
@@ -149,7 +150,7 @@ export default function useSuggestions({
           method: "POST",
           headers: {
             "Content-Type": "application/json",
-            "x-groq-api-key": apiKey,
+            [GROQ_API_KEY_HEADER]: apiKey,
           },
           body: JSON.stringify({ earlierTranscript: earlierText }),
         });
@@ -174,7 +175,7 @@ export default function useSuggestions({
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          "x-groq-api-key": apiKey,
+          [GROQ_API_KEY_HEADER]: apiKey,
         },
         body: JSON.stringify({
           recentTranscript: recentText,

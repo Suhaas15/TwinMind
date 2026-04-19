@@ -1,8 +1,15 @@
 // Generates exactly three structured meeting suggestions from transcript context via Groq.
+// Flow: validate x-groq-api-key → validate JSON body → call Groq chat → return { suggestions } or { error }.
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { MODELS, SUGGESTIONS_PROMPT } from "@/lib/prompts";
+import {
+  GROQ_API_KEY_HEADER,
+  MODELS,
+  SUGGESTIONS_MAX_TOKENS,
+  SUGGESTIONS_PROMPT,
+  SUGGESTIONS_TEMPERATURE,
+} from "@/lib/prompts";
 import type { Suggestion, SuggestionType } from "@/types/suggestions";
 
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
@@ -117,7 +124,7 @@ export async function POST(
 ): Promise<
   NextResponse<{ suggestions: Suggestion[] } | { error: string }>
 > {
-  const apiKey = request.headers.get("x-groq-api-key");
+  const apiKey = request.headers.get(GROQ_API_KEY_HEADER);
   if (!apiKey?.trim()) {
     return NextResponse.json(
       { error: "No API key provided" },
@@ -173,8 +180,8 @@ ${previousSuggestions || "None"}`;
         { role: "system", content: SUGGESTIONS_PROMPT },
         { role: "user", content: userMessage },
       ],
-      temperature: 0.4,
-      max_tokens: 1024,
+      temperature: SUGGESTIONS_TEMPERATURE,
+      max_tokens: SUGGESTIONS_MAX_TOKENS,
       response_format: {
         type: "json_schema",
         json_schema: {

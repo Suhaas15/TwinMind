@@ -1,4 +1,6 @@
-// Model IDs and prompt templates for transcription, summarization, suggestions, and chat.
+// Model IDs, prompts, Groq request constants (header name, token/temperature limits), and transcript context sizes.
+
+export const GROQ_API_KEY_HEADER = "x-groq-api-key";
 
 export const MODELS = {
   transcription: "whisper-large-v3",
@@ -10,6 +12,12 @@ export const MODELS = {
 export const RECENT_CONTEXT_CHARS = 3000;
 export const EARLIER_CONTEXT_CHARS = 4000;
 export const CHAT_CONTEXT_CHARS = 8000;
+
+export const SUMMARIZATION_MAX_TOKENS = 200;
+export const SUMMARIZATION_TEMPERATURE = 0.3;
+
+export const SUGGESTIONS_MAX_TOKENS = 1024;
+export const SUGGESTIONS_TEMPERATURE = 0.4;
 
 export const SUMMARIZATION_PROMPT = `Summarize the following meeting transcript excerpt in 3-5 sentences. Capture the key topics discussed, any decisions made, and important details that might be relevant later in the conversation. Be specific — names, numbers, and commitments matter more than general themes.`;
 

@@ -3,9 +3,12 @@
 // Middle column: suggestion refresh controls, batches of structured cards, and status messaging.
 
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
+import SuggestionCard from "@/components/SuggestionCard";
 import useSuggestions from "@/hooks/useSuggestions";
 import type { Suggestion } from "@/types/suggestions";
-import SuggestionCard from "@/components/SuggestionCard";
+
+const COUNTDOWN_INITIAL_SECONDS = 30;
+const COUNTDOWN_TICK_MS = 1000;
 
 interface InfoCardProps {
   children: ReactNode;
@@ -35,10 +38,11 @@ export function LiveSuggestions({
     isRecording,
   });
 
-  const [countdownSeconds, setCountdownSeconds] = useState(30);
+  const [countdownSeconds, setCountdownSeconds] =
+    useState(COUNTDOWN_INITIAL_SECONDS);
 
   useEffect(() => {
-    setCountdownSeconds(30);
+    setCountdownSeconds(COUNTDOWN_INITIAL_SECONDS);
   }, [batches.length]);
 
   useEffect(() => {
@@ -46,7 +50,7 @@ export function LiveSuggestions({
       setCountdownSeconds((previous) =>
         previous <= 0 ? 0 : previous - 1,
       );
-    }, 1000);
+    }, COUNTDOWN_TICK_MS);
     return () => window.clearInterval(intervalId);
   }, []);
 

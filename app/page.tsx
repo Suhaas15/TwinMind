@@ -1,6 +1,6 @@
 "use client";
 
-// Composes the three-column meeting copilot shell on the home route.
+// Client shell: owns mic + transcript state, passes transcriptChunks and isRecording into columns, logs suggestion picks until chat ships.
 
 import { useCallback, type ReactElement } from "react";
 import useMicRecorder from "@/hooks/useMicRecorder";

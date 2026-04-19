@@ -1,4 +1,4 @@
-// Shared types for structured meeting suggestions and batches.
+// Shared types for structured meeting suggestions, batches, and suggestion-type labels.
 
 export type SuggestionType =
   | "question"

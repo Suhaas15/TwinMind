@@ -1,4 +1,4 @@
-// One tappable suggestion tile with type chip, preview, and muted styling for older batches.
+// One tappable suggestion tile: type chip, preview line, dimmed when not in the newest batch.
 
 import type { ReactElement } from "react";
 import type { Suggestion } from "@/types/suggestions";

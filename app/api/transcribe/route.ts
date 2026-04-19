@@ -1,12 +1,15 @@
 // Proxies multipart audio to Groq Whisper and returns JSON text for chunked client uploads.
+// Flow: validate x-groq-api-key → validate multipart audio → call Groq → return { text } or { error }.
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { GROQ_API_KEY_HEADER, MODELS } from "@/lib/prompts";
 
 const GROQ_TRANSCRIBE_URL =
   "https://api.groq.com/openai/v1/audio/transcriptions";
 /** Audio smaller than this is treated as noise and skipped without calling Groq. */
 const MIN_AUDIO_BYTES_FOR_GROQ = 1000;
+const TRANSCRIBE_UPLOAD_FILENAME = "chunk.webm";
 
 function groqFailureMessage(parsed: unknown): string {
   if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
@@ -20,7 +23,7 @@ function groqFailureMessage(parsed: unknown): string {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<{ text: string } | { error: string }>> {
-  const apiKey = request.headers.get("x-groq-api-key");
+  const apiKey = request.headers.get(GROQ_API_KEY_HEADER);
   if (!apiKey?.trim()) {
     return NextResponse.json(
       { error: "No API key provided" },
@@ -51,8 +54,8 @@ export async function POST(
   }
 
   const outbound = new FormData();
-  outbound.append("file", audio, "chunk.webm");
-  outbound.append("model", "whisper-large-v3");
+  outbound.append("file", audio, TRANSCRIBE_UPLOAD_FILENAME);
+  outbound.append("model", MODELS.transcription);
   outbound.append("response_format", "json");
 
   const groqResponse = await fetch(GROQ_TRANSCRIBE_URL, {

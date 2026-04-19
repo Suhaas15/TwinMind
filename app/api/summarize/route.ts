@@ -1,8 +1,15 @@
 // Summarizes earlier transcript text via Groq for the live suggestions context window.
+// Flow: validate x-groq-api-key → validate JSON body → call Groq chat → return { summary } or { error }.
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
-import { MODELS, SUMMARIZATION_PROMPT } from "@/lib/prompts";
+import {
+  GROQ_API_KEY_HEADER,
+  MODELS,
+  SUMMARIZATION_MAX_TOKENS,
+  SUMMARIZATION_PROMPT,
+  SUMMARIZATION_TEMPERATURE,
+} from "@/lib/prompts";
 
 const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
 
@@ -33,7 +40,7 @@ function extractAssistantText(parsed: unknown): string | null {
 export async function POST(
   request: NextRequest,
 ): Promise<NextResponse<{ summary: string } | { error: string }>> {
-  const apiKey = request.headers.get("x-groq-api-key");
+  const apiKey = request.headers.get(GROQ_API_KEY_HEADER);
   if (!apiKey?.trim()) {
     return NextResponse.json(
       { error: "No API key provided" },
@@ -75,8 +82,8 @@ export async function POST(
         { role: "system", content: SUMMARIZATION_PROMPT },
         { role: "user", content: earlierTranscript },
       ],
-      max_tokens: 200,
-      temperature: 0.3,
+      max_tokens: SUMMARIZATION_MAX_TOKENS,
+      temperature: SUMMARIZATION_TEMPERATURE,
     }),
   });
 

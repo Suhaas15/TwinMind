@@ -1,6 +1,6 @@
 "use client";
 
-// Left column: mic recording controls, errors, guidance, and scrolling transcript chunks.
+// Left column: mic controls and errors (parent-owned recording state), guidance, and scrolling transcriptChunks from the parent.
 
 import { useEffect, useRef, type ReactElement, type ReactNode } from "react";
 
