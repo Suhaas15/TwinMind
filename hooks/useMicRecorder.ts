@@ -65,8 +65,10 @@ export default function useMicRecorder(): UseMicRecorderResult {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const initSegmentRef = useRef<Blob | null>(null);
 
   const cleanupStream = useCallback((): void => {
+    initSegmentRef.current = null;
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -151,8 +153,18 @@ export default function useMicRecorder(): UseMicRecorderResult {
         return;
       }
 
+      let audioBlob: Blob;
+      if (initSegmentRef.current === null) {
+        initSegmentRef.current = event.data;
+        audioBlob = event.data;
+      } else {
+        audioBlob = new Blob([initSegmentRef.current, event.data], {
+          type: "audio/webm",
+        });
+      }
+
       const formData = new FormData();
-      formData.append("audio", event.data, "chunk.webm");
+      formData.append("audio", audioBlob, "chunk.webm");
 
       // Upload runs outside the MediaRecorder callback stack; errors surface via setError.
       void (async (): Promise<void> => {
