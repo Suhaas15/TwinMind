@@ -1,13 +1,13 @@
 "use client";
 
-// Captures mic audio via MediaRecorder (30s slices) and POSTs each blob to /api/transcribe, accumulating text chunks.
+// Captures mic audio via MediaRecorder: full WebM blobs every ~30s (stop/restart on one stream) and POSTs each to /api/transcribe.
 
 import { useCallback, useRef, useState } from "react";
 
-const TIMESLICE_MS = 30000;
+const CHUNK_INTERVAL_MS = 30000;
 const GROQ_STORAGE_KEY = "groq_api_key";
-/** Blobs at or below this size are skipped client-side (e.g. trailing MediaRecorder flush). */
-const MIN_SENDABLE_CHUNK_BYTES = 10001;
+/** Final segment blobs below this size skip transcription (e.g. empty flush). */
+const MIN_TRANSCRIBE_BYTES = 1000;
 
 interface TranscribeSuccessResponse {
   text: string;
@@ -65,10 +65,17 @@ export default function useMicRecorder(): UseMicRecorderResult {
 
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-  const initSegmentRef = useRef<Blob | null>(null);
+  const chunkIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const isStoppingRef = useRef(false);
+  const chunksRef = useRef<Blob[]>([]);
+  const mimeTypeRef = useRef<string | undefined>(undefined);
 
   const cleanupStream = useCallback((): void => {
-    initSegmentRef.current = null;
+    if (chunkIntervalRef.current !== null) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
+    isStoppingRef.current = false;
     const stream = streamRef.current;
     if (stream) {
       stream.getTracks().forEach((track) => track.stop());
@@ -77,12 +84,18 @@ export default function useMicRecorder(): UseMicRecorderResult {
   }, []);
 
   const stopRecording = useCallback((): void => {
+    if (chunkIntervalRef.current !== null) {
+      clearInterval(chunkIntervalRef.current);
+      chunkIntervalRef.current = null;
+    }
+    isStoppingRef.current = true;
     const recorder = mediaRecorderRef.current;
     setIsRecording(false);
 
     if (recorder && recorder.state !== "inactive") {
       recorder.stop();
     } else {
+      isStoppingRef.current = false;
       cleanupStream();
       mediaRecorderRef.current = null;
     }
@@ -128,6 +141,93 @@ export default function useMicRecorder(): UseMicRecorderResult {
     streamRef.current = stream;
 
     const mimeType = pickMimeType();
+    mimeTypeRef.current = mimeType;
+    chunksRef.current = [];
+    isStoppingRef.current = false;
+
+    const attachRecorder = (recorder: MediaRecorder): void => {
+      recorder.ondataavailable = (event: BlobEvent): void => {
+        if (event.data && event.data.size > 0) {
+          chunksRef.current.push(event.data);
+        }
+      };
+
+      recorder.onerror = (): void => {
+        setError("Recording error.");
+      };
+
+      recorder.onstop = (): void => {
+        void (async (): Promise<void> => {
+          const parts = [...chunksRef.current];
+          chunksRef.current = [];
+          const mime = mimeTypeRef.current ?? "audio/webm";
+          const blob = new Blob(parts, { type: mime });
+
+          const key = localStorage.getItem(GROQ_STORAGE_KEY);
+          if (blob.size >= MIN_TRANSCRIBE_BYTES && key?.trim()) {
+            const formData = new FormData();
+            formData.append("audio", blob, "chunk.webm");
+
+            try {
+              const response = await fetch("/api/transcribe", {
+                method: "POST",
+                body: formData,
+                headers: {
+                  "x-groq-api-key": key,
+                },
+              });
+
+              const payload: unknown = await response.json();
+
+              if (!response.ok) {
+                const message = isTranscribeError(payload)
+                  ? payload.error
+                  : "Transcription failed";
+                setError(message);
+              } else if (
+                isTranscribeSuccess(payload) &&
+                payload.text.trim() !== ""
+              ) {
+                setTranscriptChunks((previous) => [...previous, payload.text]);
+              }
+            } catch {
+              setError("Network error while transcribing.");
+            }
+          }
+
+          if (isStoppingRef.current) {
+            cleanupStream();
+            mediaRecorderRef.current = null;
+            return;
+          }
+
+          const activeStream = streamRef.current;
+          if (!activeStream) {
+            mediaRecorderRef.current = null;
+            return;
+          }
+
+          let nextRecorder: MediaRecorder;
+          try {
+            nextRecorder = mimeTypeRef.current
+              ? new MediaRecorder(activeStream, {
+                  mimeType: mimeTypeRef.current,
+                })
+              : new MediaRecorder(activeStream);
+          } catch {
+            setError("Could not create MediaRecorder for this device.");
+            cleanupStream();
+            mediaRecorderRef.current = null;
+            return;
+          }
+
+          mediaRecorderRef.current = nextRecorder;
+          attachRecorder(nextRecorder);
+          nextRecorder.start();
+        })();
+      };
+    };
+
     let recorder: MediaRecorder;
     try {
       recorder = mimeType
@@ -139,74 +239,16 @@ export default function useMicRecorder(): UseMicRecorderResult {
       return;
     }
 
-    recorder.ondataavailable = (event: BlobEvent): void => {
-      if (!event.data || event.data.size === 0) {
-        return;
-      }
-
-      if (event.data.size < MIN_SENDABLE_CHUNK_BYTES) {
-        return;
-      }
-
-      const key = localStorage.getItem(GROQ_STORAGE_KEY);
-      if (!key?.trim()) {
-        return;
-      }
-
-      let audioBlob: Blob;
-      if (initSegmentRef.current === null) {
-        initSegmentRef.current = event.data;
-        audioBlob = event.data;
-      } else {
-        audioBlob = new Blob([initSegmentRef.current, event.data], {
-          type: "audio/webm",
-        });
-      }
-
-      const formData = new FormData();
-      formData.append("audio", audioBlob, "chunk.webm");
-
-      // Upload runs outside the MediaRecorder callback stack; errors surface via setError.
-      void (async (): Promise<void> => {
-        try {
-          const response = await fetch("/api/transcribe", {
-            method: "POST",
-            body: formData,
-            headers: {
-              "x-groq-api-key": key,
-            },
-          });
-
-          const payload: unknown = await response.json();
-
-          if (!response.ok) {
-            const message = isTranscribeError(payload)
-              ? payload.error
-              : "Transcription failed";
-            setError(message);
-            return;
-          }
-
-          if (isTranscribeSuccess(payload) && payload.text.trim() !== "") {
-            setTranscriptChunks((previous) => [...previous, payload.text]);
-          }
-        } catch {
-          setError("Network error while transcribing.");
-        }
-      })();
-    };
-
-    recorder.onerror = (): void => {
-      setError("Recording error.");
-    };
-
-    recorder.onstop = (): void => {
-      cleanupStream();
-      mediaRecorderRef.current = null;
-    };
-
+    attachRecorder(recorder);
     mediaRecorderRef.current = recorder;
-    recorder.start(TIMESLICE_MS);
+    recorder.start();
+
+    chunkIntervalRef.current = setInterval(() => {
+      if (mediaRecorderRef.current?.state === "recording") {
+        mediaRecorderRef.current.stop();
+      }
+    }, CHUNK_INTERVAL_MS);
+
     setIsRecording(true);
   }, [cleanupStream]);
 
