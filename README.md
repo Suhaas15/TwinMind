@@ -6,7 +6,7 @@ TwinMind Live Suggestions is a **meeting copilot**: three columns, one conversat
 
 I built this as a **take-home for TwinMind**. The product bet is simple: during a live call, people don’t need more noise—they need the *right* suggestion at the *right* moment. This repo is my working answer to that: capture what’s being said, turn it into text on a cadence you can trust, and leave room for richer “live suggestions” and chat layers to grow on top.
 
-Right now you’ll see the shell, the mic pipeline, live suggestion batches (with the context windowing and prompts described below), and the chat column still waiting for wiring. The foundation and the middle column are doing real work; chat is the next big hook-up.
+Right now you’ll see the shell, the mic pipeline, live suggestion batches (with the context windowing and prompts described below), and a streaming chat column tied to the same transcript and suggestion cards. The foundation, the middle column, and chat are all doing real work for the session.
 
 ---
 
@@ -33,7 +33,7 @@ If nothing happens, check the mic permission prompt and the network tab on `/api
 
 **Tailwind CSS** — No component library. I wanted speed and a dark, dense UI without fighting a design system I didn’t own. Tailwind let me iterate on spacing and borders until the three columns *felt* like a control room, not a slide deck.
 
-**No database, no auth** — For this assignment, persistence would be a distraction. Everything interesting lives in **React state for the session**: recording, transcript chunks, suggestion batches, and (soon) chat messages. If you refresh, you’re starting a new mental session anyway—that matches how I’d use a copilot in a real meeting.
+**No database, no auth** — For this assignment, persistence would be a distraction. Everything interesting lives in **React state for the session**: recording, transcript chunks, suggestion batches, and chat messages. If you refresh, you’re starting a new mental session anyway—that matches how I’d use a copilot in a real meeting.
 
 **Three Groq call families** — The architecture lines up like this:
 
@@ -41,7 +41,7 @@ If nothing happens, check the mic permission prompt and the network tab on `/api
 2. **GPT-OSS 120B** for **summarization + live suggestions** — a small summarize hop, then structured suggestion batches in the middle column.
 3. **GPT-OSS 120B** again for **chat**—longer answers when a suggestion isn’t enough.
 
-Transcription and the suggestion pipeline (summarize + suggest) are live; chat is still the column waiting on Phase 4.
+Transcription, the suggestion pipeline (summarize + suggest), and streaming chat are all live against Groq.
 
 ---
 
@@ -75,7 +75,9 @@ Instead, that earlier slice goes to **`/api/summarize`** first. The system promp
 
 **Previous suggestions in the loop.** Every suggestion request includes the **previews** from the last batch (newline-separated). That’s how we tell the model: don’t recycle the same three blurbs every 30 seconds when the room hasn’t actually moved. It’s cheap context, and it makes the refresh cadence feel less like a broken record.
 
-**Chat** — the **`CHAT_PROMPT`** in `lib/prompts.ts` is wired for Phase 4: ground answers in the full transcript, admit when something wasn’t said, stay practical. I’ll deepen that section once the panel talks to the API.
+**Chat — two system blocks, one conversational thread.** The chat prompt always receives the **full meeting transcript** as its own **system-level context block**, separate from the instruction prompt — **`CHAT_PROMPT`** in `lib/prompts.ts`. That split is deliberate: answers stay **grounded in what was actually said**—the model can interpret and connect dots, but it is not invited to hallucinate meeting content that never hit the transcript.
+
+**Instant detail, then the stream.** When a suggestion is clicked, the **`detail`** field appears **immediately** as a preview bubble while the **full answer streams in below it**. The interaction feels responsive even before the model has generated a word—which matters in a live meeting where “waiting on silence” reads as broken.
 
 ---
 
@@ -91,13 +93,17 @@ Instead, that earlier slice goes to **`/api/summarize`** first. The system promp
 
 **Two Groq calls per suggestion refresh (summarize, then suggest).** The summarize hop buys **coherent earlier context** without dumping 20 minutes of raw transcript into the suggestion prompt. The cost is **sequential latency**, but the summary is **tiny (200 tokens max)** and **fast to generate** in practice—worth it until real profiling says otherwise. If latency ever becomes the bottleneck, **collapsing into one call** is an honest future lever; it’s not a moral failure, just an optimization.
 
+**Streaming chat responses.** We use **SSE streaming** for chat so the **first token** tends to land in **~200–400ms** instead of waiting **3–5 seconds** for a complete response. In a live meeting, that latency gap is often the line between **useful** and **useless**. The tradeoff is **slightly more complex client-side stream handling**—worth it.
+
+**Chat history limit (20 turns).** We cap chat history at **20 turns** rather than summarizing it. The reasoning: the **full meeting transcript** is already the memory of the session. Chat history only needs to carry the **conversational thread** of what’s been asked and answered—not re-encode the whole meeting. Twenty turns covers even long, focused Q&A; if you hit the cap, the **transcript context** means nothing important is actually lost. We chose this over a summarization approach to **avoid adding a sequential extra Groq call** before every chat message.
+
 ---
 
 ## What’s Left / Roadmap (for now)
 
 - [x] **Transcription hardening (Phase 2)** — fixed invalid timeslice chunks for Whisper, killed the “init segment + every delta” duplication bug, moved to **30s stop/restart** self-contained WebM segments.
 - [x] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
-- [ ] **Chat panel wiring (Phase 4)** — thread messages, send pipeline, tie-ins to suggestions.
+- [x] **Chat panel wiring (Phase 4)** — thread messages, streaming send pipeline, suggestion handoff with instant detail preview + streamed follow-up.
 - [ ] **Settings modal (Phase 5)** — first-class Groq key entry instead of devtools/localStorage yoga.
 - [ ] **Export (Phase 6)** — transcript + suggestions out of the browser in a format people actually use.
 - [ ] **Prompt tuning (Phase 7)** — keep pressure-testing summarization + suggestion prompts as real meetings surface edge cases.

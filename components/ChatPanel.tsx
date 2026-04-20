@@ -1,6 +1,19 @@
-// Right column: chat guidance, empty thread, and pinned message composer.
+"use client";
 
-import type { ReactElement, ReactNode } from "react";
+// Right column: threaded chat with streaming assistant replies, suggestion handoff, and pinned composer.
+
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+} from "react";
+import ReactMarkdown from "react-markdown";
+import useChat from "@/hooks/useChat";
+import type { ChatMessage } from "@/types/chat";
+import type { Suggestion } from "@/types/suggestions";
 
 interface InfoCardProps {
   children: ReactNode;
@@ -14,7 +27,84 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
   );
 }
 
-export function ChatPanel(): ReactElement {
+interface ChatPanelProps {
+  transcriptChunks: string[];
+  pendingSuggestion: Suggestion | null;
+  onSuggestionHandled: () => void;
+}
+
+interface ChatBubbleProps {
+  message: ChatMessage;
+}
+
+function ChatBubble({ message }: ChatBubbleProps): ReactElement {
+  const isUser = message.role === "user";
+  const isDetail = message.isDetail === true;
+  const baseBubble =
+    "max-w-[80%] rounded-lg px-4 py-2 text-sm break-words whitespace-pre-wrap";
+
+  if (isUser) {
+    return (
+      <div className="flex justify-end">
+        <div
+          className={`${baseBubble} bg-blue-600 text-white`}
+        >
+          {message.content}
+        </div>
+      </div>
+    );
+  }
+
+  const assistantVisual = isDetail
+    ? `${baseBubble} border-l-2 border-blue-500 bg-neutral-800 text-neutral-300`
+    : `${baseBubble} bg-neutral-800 text-white`;
+  const assistantContent = message.isStreaming
+    ? `${message.content}▍`
+    : message.content;
+
+  return (
+    <div className="flex justify-start">
+      <div className={assistantVisual}>
+        <div className="prose prose-invert prose-sm max-w-none">
+          <ReactMarkdown>{assistantContent}</ReactMarkdown>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export default function ChatPanel({
+  transcriptChunks,
+  pendingSuggestion,
+  onSuggestionHandled,
+}: ChatPanelProps): ReactElement {
+  const { messages, isStreaming, sendMessage, addSuggestionToChat, error } =
+    useChat({ transcriptChunks });
+
+  const scrollAnchorRef = useRef<HTMLDivElement>(null);
+  const [inputValue, setInputValue] = useState("");
+
+  useEffect(() => {
+    if (pendingSuggestion === null) {
+      return;
+    }
+    addSuggestionToChat(pendingSuggestion);
+    onSuggestionHandled();
+  }, [pendingSuggestion, addSuggestionToChat, onSuggestionHandled]);
+
+  useEffect(() => {
+    scrollAnchorRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages]);
+
+  const submitFromInput = useCallback(async (): Promise<void> => {
+    const text = inputValue.trim();
+    if (text.length === 0 || isStreaming) {
+      return;
+    }
+    setInputValue("");
+    await sendMessage(text);
+  }, [inputValue, isStreaming, sendMessage]);
+
   return (
     <section className="flex min-h-0 min-w-0 flex-1 flex-col">
       <header className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-5 py-4">
@@ -26,16 +116,30 @@ export function ChatPanel(): ReactElement {
         </span>
       </header>
       <div className="flex min-h-0 flex-1 flex-col">
-        <div className="min-h-0 flex-1 space-y-5 overflow-y-auto px-5 py-6">
-          <InfoCard>
-            Chat keeps longer answers and follow-ups in one thread. Use it when
-            a suggestion needs depth, or type a fresh question—everything here
-            stays in this session until you clear it.
-          </InfoCard>
-          <p className="text-center text-sm text-neutral-600">
-            Click a suggestion or type a question below.
-          </p>
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
+          <div className="flex flex-col gap-4">
+            {messages.length === 0 ? (
+              <>
+                <InfoCard>
+                  Chat keeps longer answers and follow-ups in one thread. Use it
+                  when a suggestion needs depth, or type a fresh question—everything
+                  here stays in this session until you clear it.
+                </InfoCard>
+                <p className="text-center text-sm text-neutral-600">
+                  Click a suggestion or type a question below.
+                </p>
+              </>
+            ) : null}
+            {messages.map((message) => (
+              <ChatBubble key={message.id} message={message} />
+            ))}
+            <div ref={scrollAnchorRef} aria-hidden />
+          </div>
         </div>
+
+        {error ? (
+          <p className="shrink-0 px-5 pb-2 text-xs text-red-500">{error}</p>
+        ) : null}
 
         <footer className="shrink-0 border-t border-neutral-800 bg-[#0a0a0a]/95 px-5 py-4 backdrop-blur-sm">
           <div className="flex gap-3">
@@ -46,12 +150,27 @@ export function ChatPanel(): ReactElement {
               id="chat-input"
               name="message"
               type="text"
+              value={inputValue}
+              onChange={(event) => {
+                setInputValue(event.target.value);
+              }}
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && !event.shiftKey) {
+                  event.preventDefault();
+                  void submitFromInput();
+                }
+              }}
+              disabled={isStreaming}
               placeholder="Ask anything..."
-              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus-visible:border-blue-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500"
+              className="min-w-0 flex-1 rounded-md border border-neutral-700 bg-neutral-950 px-3 py-2.5 text-sm text-neutral-200 placeholder:text-neutral-600 focus-visible:border-blue-500 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-50"
             />
             <button
               type="button"
-              className="shrink-0 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400"
+              disabled={isStreaming}
+              onClick={() => {
+                void submitFromInput();
+              }}
+              className="shrink-0 rounded-md bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-blue-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-400 disabled:cursor-not-allowed disabled:opacity-50"
             >
               Send
             </button>

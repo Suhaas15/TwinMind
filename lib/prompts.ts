@@ -19,6 +19,8 @@ export const SUMMARIZATION_TEMPERATURE = 0.3;
 export const SUGGESTIONS_MAX_TOKENS = 1024;
 export const SUGGESTIONS_TEMPERATURE = 0.4;
 
+export const CHAT_MAX_TOKENS = 1024;
+
 export const SUMMARIZATION_PROMPT = `Summarize the following meeting transcript excerpt in 3-5 sentences. Capture the key topics discussed, any decisions made, and important details that might be relevant later in the conversation. Be specific — names, numbers, and commitments matter more than general themes.`;
 
 export const SUGGESTIONS_PROMPT = `You are a real-time meeting copilot. Your job is to surface exactly 3 suggestions that help the current speaker right now — not generic tips, but specific, actionable nudges grounded in what was just said.

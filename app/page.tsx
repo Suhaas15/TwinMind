@@ -1,10 +1,10 @@
 "use client";
 
-// Client shell: owns mic + transcript state, passes transcriptChunks and isRecording into columns, logs suggestion picks until chat ships.
+// Client shell: owns mic + transcript state, suggestion handoff into chat, and three-column layout.
 
-import { useCallback, type ReactElement } from "react";
+import { useCallback, useState, type ReactElement } from "react";
 import useMicRecorder from "@/hooks/useMicRecorder";
-import { ChatPanel } from "@/components/ChatPanel";
+import ChatPanel from "@/components/ChatPanel";
 import { LiveSuggestions } from "@/components/LiveSuggestions";
 import { MicTranscript } from "@/components/MicTranscript";
 import type { Suggestion } from "@/types/suggestions";
@@ -17,6 +17,9 @@ export default function Home(): ReactElement {
     stopRecording,
     error: recordingError,
   } = useMicRecorder();
+
+  const [pendingSuggestion, setPendingSuggestion] =
+    useState<Suggestion | null>(null);
 
   const handleTranscriptUpdate = useCallback((chunks: string[]): void => {
     void chunks;
@@ -34,7 +37,11 @@ export default function Home(): ReactElement {
   );
 
   const handleSuggestionSelect = useCallback((suggestion: Suggestion): void => {
-    console.log(suggestion);
+    setPendingSuggestion({ ...suggestion });
+  }, []);
+
+  const handleSuggestionHandled = useCallback((): void => {
+    setPendingSuggestion(null);
   }, []);
 
   return (
@@ -51,7 +58,11 @@ export default function Home(): ReactElement {
         isRecording={isRecording}
         onSuggestionSelect={handleSuggestionSelect}
       />
-      <ChatPanel />
+      <ChatPanel
+        transcriptChunks={transcriptChunks}
+        pendingSuggestion={pendingSuggestion}
+        onSuggestionHandled={handleSuggestionHandled}
+      />
     </div>
   );
 }
