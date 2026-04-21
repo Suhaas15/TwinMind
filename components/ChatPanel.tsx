@@ -11,7 +11,6 @@ import {
   type ReactNode,
 } from "react";
 import ReactMarkdown from "react-markdown";
-import useChat from "@/hooks/useChat";
 import type { ChatMessage } from "@/types/chat";
 import type { Suggestion } from "@/types/suggestions";
 
@@ -28,7 +27,14 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
 }
 
 interface ChatPanelProps {
-  transcriptChunks: string[];
+  messages: ChatMessage[];
+  isStreaming: boolean;
+  sendMessage: (
+    message: string,
+    options?: { skipUserMessage?: boolean },
+  ) => Promise<void>;
+  addSuggestionToChat: (suggestion: Suggestion) => void;
+  error: string | null;
   pendingSuggestion: Suggestion | null;
   onSuggestionHandled: () => void;
 }
@@ -40,14 +46,13 @@ interface ChatBubbleProps {
 function ChatBubble({ message }: ChatBubbleProps): ReactElement {
   const isUser = message.role === "user";
   const isDetail = message.isDetail === true;
-  const baseBubble =
-    "max-w-[80%] rounded-lg px-4 py-2 text-sm break-words whitespace-pre-wrap";
+  const baseBubble = "rounded-lg px-4 py-2 text-sm break-words whitespace-pre-wrap";
 
   if (isUser) {
     return (
-      <div className="flex justify-end">
+      <div className="mr-2 flex justify-end">
         <div
-          className={`${baseBubble} bg-blue-600 text-white`}
+          className={`${baseBubble} max-w-[80%] bg-blue-600 text-white`}
         >
           {message.content}
         </div>
@@ -56,17 +61,24 @@ function ChatBubble({ message }: ChatBubbleProps): ReactElement {
   }
 
   const assistantVisual = isDetail
-    ? `${baseBubble} border-l-2 border-blue-500 bg-neutral-800 text-neutral-300`
-    : `${baseBubble} bg-neutral-800 text-white`;
+    ? `${baseBubble} max-h-[60vh] max-w-[85%] overflow-y-auto border-l-2 border-blue-500 bg-neutral-800 text-neutral-300`
+    : `${baseBubble} max-h-[60vh] max-w-[85%] overflow-y-auto bg-neutral-800 text-white`;
   const assistantContent = message.isStreaming
     ? `${message.content}▍`
     : message.content;
 
   return (
-    <div className="flex justify-start">
-      <div className={assistantVisual}>
-        <div className="prose prose-invert prose-sm max-w-none">
-          <ReactMarkdown>{assistantContent}</ReactMarkdown>
+    <div className="ml-2 flex justify-start">
+      <div className="flex flex-col gap-1">
+        {isDetail ? (
+          <span className="text-xs uppercase tracking-widest text-blue-400">
+            Quick Preview
+          </span>
+        ) : null}
+        <div className={assistantVisual}>
+          <div className="prose prose-invert prose-sm max-w-none">
+            <ReactMarkdown>{assistantContent}</ReactMarkdown>
+          </div>
         </div>
       </div>
     </div>
@@ -74,13 +86,14 @@ function ChatBubble({ message }: ChatBubbleProps): ReactElement {
 }
 
 export default function ChatPanel({
-  transcriptChunks,
+  messages,
+  isStreaming,
+  sendMessage,
+  addSuggestionToChat,
+  error,
   pendingSuggestion,
   onSuggestionHandled,
 }: ChatPanelProps): ReactElement {
-  const { messages, isStreaming, sendMessage, addSuggestionToChat, error } =
-    useChat({ transcriptChunks });
-
   const scrollAnchorRef = useRef<HTMLDivElement>(null);
   const [inputValue, setInputValue] = useState("");
 

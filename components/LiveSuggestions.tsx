@@ -4,8 +4,7 @@
 
 import { useEffect, useState, type ReactElement, type ReactNode } from "react";
 import SuggestionCard from "@/components/SuggestionCard";
-import useSuggestions from "@/hooks/useSuggestions";
-import type { Suggestion } from "@/types/suggestions";
+import type { Suggestion, SuggestionBatch } from "@/types/suggestions";
 
 const COUNTDOWN_INITIAL_SECONDS = 30;
 const COUNTDOWN_TICK_MS = 1000;
@@ -23,21 +22,20 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
 }
 
 interface LiveSuggestionsProps {
-  transcriptChunks: string[];
-  isRecording: boolean;
+  batches: SuggestionBatch[];
+  isLoading: boolean;
+  triggerRefresh: () => void;
+  error: string | null;
   onSuggestionSelect: (suggestion: Suggestion) => void;
 }
 
-export function LiveSuggestions({
-  transcriptChunks,
-  isRecording,
+export default function LiveSuggestions({
+  batches,
+  isLoading,
+  triggerRefresh,
+  error,
   onSuggestionSelect,
 }: LiveSuggestionsProps): ReactElement {
-  const { batches, isLoading, triggerRefresh, error } = useSuggestions({
-    transcriptChunks,
-    isRecording,
-  });
-
   const [countdownSeconds, setCountdownSeconds] =
     useState(COUNTDOWN_INITIAL_SECONDS);
 

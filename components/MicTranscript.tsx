@@ -50,23 +50,17 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
 interface MicTranscriptProps {
   transcriptChunks: string[];
   isRecording: boolean;
-  onTranscriptUpdate: (chunks: string[]) => void;
   onRecordingChange: (nextRecording: boolean) => void;
   recordingError: string | null;
 }
 
-export function MicTranscript({
+export default function MicTranscript({
   transcriptChunks,
   isRecording,
-  onTranscriptUpdate,
   onRecordingChange,
   recordingError,
 }: MicTranscriptProps): ReactElement {
   const transcriptEndRef = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    onTranscriptUpdate(transcriptChunks);
-  }, [transcriptChunks, onTranscriptUpdate]);
 
   useEffect(() => {
     transcriptEndRef.current?.scrollIntoView({ behavior: "smooth" });

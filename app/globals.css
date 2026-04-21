@@ -1,6 +1,6 @@
+/* Global Tailwind/theme wiring and baseline full-height dark app styles. */
 @import "tailwindcss";
 @plugin "@tailwindcss/typography";
-/* Tailwind theme wiring plus base colors and overflow for the full-height dark UI. */
 
 @theme inline {
   --font-sans: var(--font-geist-sans);

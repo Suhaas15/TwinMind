@@ -126,6 +126,7 @@ export default function useChat({
       const decoder = new TextDecoder();
       let buffer = "";
 
+      // Groq streams SSE frames split across arbitrary chunks; buffer until event boundaries before parsing deltas.
       const processLine = (rawLine: string): void => {
         const trimmed = rawLine.trim();
         if (!trimmed.startsWith("data:")) {
