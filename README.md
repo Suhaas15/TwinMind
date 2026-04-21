@@ -4,26 +4,22 @@
 
 TwinMind Live Suggestions is a **meeting copilot**: three columns, one conversation, and a stubborn belief that the best nudge is the one that arrives *while you’re still in the sentence*, not five minutes later.
 
-I built this as a **take-home for TwinMind**. The product bet is simple: during a live call, people don’t need more noise—they need the *right* suggestion at the *right* moment. This repo is my working answer to that: capture what’s being said, turn it into text on a cadence you can trust, and leave room for richer “live suggestions” and chat layers to grow on top.
-
-Right now you’ll see the shell, the mic pipeline, live suggestion batches (with the context windowing and prompts described below), and a streaming chat column tied to the same transcript and suggestion cards. The foundation, the middle column, and chat are all doing real work for the session.
+I built this as a **take-home for TwinMind**. The product bet is simple: during a live call, people do not need more noise - they need the *right* suggestion at the *right* moment. This repo is my answer: live transcription on a fixed cadence, contextual suggestion batches every ~30 seconds, streaming chat grounded in the same transcript, runtime prompt/settings control from a modal, and one-click JSON session export.
 
 ---
 
 ## Getting Started
 
-You’ll need **Node 18+** and a **Groq API key** (Whisper + the OSS models I plan to call all live on Groq’s stack).
+**Live demo:** https://twinmind-live-suggestions-jet.vercel.app
 
-Clone the repo, install, and run:
-
-```bash
-npm install
-npm run dev
-```
-
-Open the URL from the dev server (Next defaults to port **3000**). In the **Settings** flow (once the modal ships), paste your Groq key so the app can authorize transcription requests. Until that UI lands, you can do the same thing manually: in devtools, `localStorage.setItem("groq_api_key", "<your key>")`, refresh, hit the mic, and **start talking**. You should see transcript chunks appear every ~30 seconds as each self-contained recording segment finishes and Whisper turns it into text.
-
-If nothing happens, check the mic permission prompt and the network tab on `/api/transcribe`—those two tell most of the story.
+You need **Node 18+** and a **Groq API key**.
+1. Clone the repo and install dependencies: `npm install`
+2. Start the app: `npm run dev`
+3. Open **Settings** (gear icon, top right) and paste your Groq API key
+4. Click the mic and start talking
+5. Transcript chunks and live suggestions refresh automatically every ~30s
+6. Click any suggestion card to open it in chat (instant preview + streamed answer)
+7. Use **Export Session** to download transcript + suggestions + chat as JSON
 
 ---
 
@@ -59,45 +55,41 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 
 ## Prompt Strategy
 
-This is the part I expect to keep tuning, but the **shape** of the system is set: how we window context, why we burn two Groq calls before we ever ask for suggestions, and how we keep the model from sounding like a mail-merge template.
+**Context windowing — two layers.** I split context into a **recent** verbatim tail and an **earlier** region. Recent is about **3,000 chars** (~last 3 minutes), because that is what people are reacting to right now. Earlier is up to **4,000 chars** from the end of the older transcript so background stays fresh. The cost is that this is character-window based, not speaker-turn aware, which is simpler and fast but can cut conversational boundaries.
 
-**Context windowing — two layers, not one wall of text.** I split the transcript into a **recent** slice and an **earlier** slice. The **recent** layer is the **last ~3 minutes of speech**, passed **verbatim** — in code that’s about **3,000 characters** of joined transcript, i.e. what people in the room are *actually* reacting to right now. Everything **before** that tail is the **earlier** layer: I take up to **4,000 characters** from the **end** of that older stretch (so I keep the freshest “background,” not the meeting opener from an hour ago) and **do not** send that raw wall straight into the suggestion model.
+**Why summarize instead of truncate.** I summarize the earlier slice before suggestion generation because truncation destroys context at sentence and entity boundaries. A short 3-5 sentence summary keeps decisions, names, numbers, and commitments coherent enough for the model to reason on. That gives better signal than shoving a broken raw chunk into the prompt. The cost is that summarization is lossy by design.
 
-Instead, that earlier slice goes to **`/api/summarize`** first. The system prompt asks for a **3–5 sentence** compression: **key topics, decisions, names, numbers, commitments** — the stuff you’d actually want in working memory. That string becomes **EARLIER CONTEXT SUMMARY** in the suggestion call; the verbatim tail becomes **RECENT TRANSCRIPT**.
+**The two-call latency tradeoff.** Suggestion refresh is sequential: first `/api/summarize`, then `/api/suggestions`. I accept that because the summary is capped at **200 tokens**, so the added latency is usually tens to low hundreds of milliseconds, while quality gains are obvious in longer meetings. This keeps the suggestion model focused instead of context-confused. The cost is one extra network/model hop per refresh.
 
-**Why summarize instead of blunt truncation.** I could have hard-truncated the earlier region to a token budget, but truncation loves to **cut mid-sentence, mid-thought, mid-name**. You get grammatically broken context the model will happily hallucinate on top of. A short summary **preserves the narrative threads** in a shape the model can *use*: “they committed to X by Friday,” “budget cap is Y,” “Person A owns the follow-up.” It’s lossy in the good way—like good meeting notes, not like a shredded fax.
+**Suggestion types — five labels, not a bingo card.** I use five labels (`question`, `talking_point`, `answer`, `fact_check`, `clarify`) as vocabulary, not quotas. The prompt explicitly forbids one-of-each output and asks for the three best fits for the current moment. That keeps batches useful instead of formulaic—type distribution is intentionally uneven across refreshes.
 
-**The latency tradeoff (summarize, then suggest).** Before **`/api/suggestions`** fires, **`/api/summarize`** runs on the earlier slice—**sequential**, no parallel cheat code. I’m okay with that because the summary is **capped at 200 output tokens**, and Groq’s stack routinely runs on the order of **~500 tokens/s** for this class of model, so the extra hop is usually **tens to low hundreds of milliseconds** in practice—not a second-long detour. The gain is **contextual quality** on long meetings: the suggestion model isn’t guessing what “earlier” meant from a mangled paste. If production ever screams about milliseconds, we can **collapse summarize + suggestions into a single call**; I’d rather start with clarity and simplify than start fuzzy and debug why suggestions drift.
+**JSON Schema mode.** Suggestions run in structured-output mode with a strict schema: exactly three items, each with `type`, `preview`, and `detail`. That gives me stable UI contracts and avoids regex cleanup or brittle post-processing. I still validate at the route boundary, but schema-first keeps the wire format predictable. The risk is that strict schema can reject otherwise reasonable free-form output.
 
-**Suggestion types — five labels, not a bingo card.** I defined five types — **question**, **talking_point**, **answer**, **fact_check**, **clarify** — and I’m explicit in the prompt: **do not** produce one of each mechanically. The model picks the **three** types that actually fit *this* moment. That single rule is a lot of what keeps output from feeling formulaic; the types are vocabulary for the model, not a checklist it has to tick every refresh.
+**Previous suggestions in the loop.** Each refresh includes the last batch previews as anti-repeat context. That simple addition noticeably reduces duplicate nudges when conversation stalls or loops. It is cheap, explicit, and model-friendly. The risk is that if previous suggestions were wrong, they still influence the next pass.
 
-**JSON Schema mode — trust the wire format.** Suggestions run on **GPT-OSS 120B** with Groq’s **structured output** (`json_schema`) so the response has to match our object shape: exactly three items, each with `type`, `preview`, and `detail`. If the HTTP call succeeds, I treat the payload as structurally valid — no defensive regex archaeology. The route still sanity-checks because I’m not reckless, but the contract is “schema or bust,” which lines up cleanly with our TypeScript types.
+**Chat — transcript as ground truth.** Chat always receives meeting transcript context as a separate system block, distinct from instruction text. That keeps answers anchored to what was actually said instead of drifting into generic assistant behavior. The model can infer and synthesize, but it is not asked to invent missing meeting facts—if the transcript misses speech, chat inherits that blind spot.
 
-**Previous suggestions in the loop.** Every suggestion request includes the **previews** from the last batch (newline-separated). That’s how we tell the model: don’t recycle the same three blurbs every 30 seconds when the room hasn’t actually moved. It’s cheap context, and it makes the refresh cadence feel less like a broken record.
-
-**Chat — two system blocks, one conversational thread.** The chat prompt always receives the **full meeting transcript** as its own **system-level context block**, separate from the instruction prompt — **`CHAT_PROMPT`** in `lib/prompts.ts`. That split is deliberate: answers stay **grounded in what was actually said**—the model can interpret and connect dots, but it is not invited to hallucinate meeting content that never hit the transcript.
-
-**Instant detail, then the stream.** When a suggestion is clicked, the **`detail`** field appears **immediately** as a preview bubble while the **full answer streams in below it**. The interaction feels responsive even before the model has generated a word—which matters in a live meeting where “waiting on silence” reads as broken.
+**Instant detail preview + streaming.** Clicking a suggestion inserts its `detail` immediately, then streams a fuller answer underneath. This makes interaction feel responsive in live-call conditions where dead time kills trust. Users get immediate value plus richer follow-up without waiting on full completion—users may read the preview as final before the stream finishes.
 
 ---
 
 ## Tradeoffs & Decisions
 
-**We skip audio conversion** because WebM/Opus is already what Whisper expects in practice, and every conversion step is latency + risk. If we ever need universal mobile Safari behavior, we’ll revisit—but not before we have a reason.
+**We skip audio conversion** because WebM/Opus is already what Whisper accepts in practice, and every conversion step adds latency and failure modes. This keeps the transcription path short and debuggable. If mobile Safari constraints force a format bridge later, I will add it with clear justification.
 
-**The Groq key lives in `localStorage`** for this assignment because I’m not building account systems or vaults here. The key is **not** checked into the repo and **not** baked into server env as a global secret—you supply it per browser session, and the server route reads it from a header on each request when calling Groq. That’s a pragmatic compromise: good enough for a take-home, not how I’d ship to paying enterprises without a proper auth story.
+**The Groq key lives in `localStorage`** for this assignment because account systems and vault management are outside scope. The key is not committed and not hardcoded server-side; it is provided by the user in Settings and forwarded per request header. That is a pragmatic local-dev security posture, not an enterprise auth model.
 
-**All state in React** keeps the mental model small: one session, one tab, one source of truth. No migrations, no “why is my local DB out of sync with production,” no surprise GDPR footguns. The cost is obvious—you lose everything on refresh—and I’m fine with that for v0.
+**All state in React** keeps the mental model small: one session, one tab, one source of truth. This avoids persistence complexity, migrations, and sync bugs for a workflow that is naturally session-oriented. The cost is explicit: refresh resets runtime state, which is acceptable for this scope.
 
-**Stop/restart transcription vs MediaRecorder timeslice.** Timeslice chunks were seductive until Whisper started **400**ing every “tail” file without a WebM header—or, worse, accepting **header-glued** tails and **re-transcribing the same opening audio** on every upload. Stop/restart trades **~1–2 seconds of gap per ~30s** (~6% timeline loss in the back-of-the-envelope math) for **one valid WebM per segment** and **no duplicate transcript**. Gap over duplication. If I ever need gapless, I’ll design for it explicitly; I won’t pretend timeslice blobs were “good enough.”
+**Stop/restart transcription vs MediaRecorder timeslice.** Timeslice produced non-standalone chunks that Whisper rejected (or duplicated when header-glued). Stop/restart gives one valid WebM per segment and removes duplicate transcript failure modes. The cost is a small **~1-2s** gap per **~30s** cycle (~6% timeline).
 
-**Two Groq calls per suggestion refresh (summarize, then suggest).** The summarize hop buys **coherent earlier context** without dumping 20 minutes of raw transcript into the suggestion prompt. The cost is **sequential latency**, but the summary is **tiny (200 tokens max)** and **fast to generate** in practice—worth it until real profiling says otherwise. If latency ever becomes the bottleneck, **collapsing into one call** is an honest future lever; it’s not a moral failure, just an optimization.
+**Two Groq calls per suggestion refresh (summarize, then suggest).** The summarize hop buys coherent earlier context without flooding the suggestion prompt with raw transcript. Sequential latency is real, but bounded because the summary output is capped at 200 tokens. If latency becomes the top bottleneck, collapsing into one call is the straightforward optimization.
 
-**Streaming chat responses.** We use **SSE streaming** for chat so the **first token** tends to land in **~200–400ms** instead of waiting **3–5 seconds** for a complete response. In a live meeting, that latency gap is often the line between **useful** and **useless**. The tradeoff is **slightly more complex client-side stream handling**—worth it.
+**Streaming chat responses.** Chat uses SSE so first token latency is typically **~200-400ms** instead of waiting several seconds for full completion. In a live meeting, that response shape materially improves usability. Tradeoff: stream parsing/state handling is more complex than one-shot JSON.
 
-**Chat history limit (20 turns).** We cap chat history at **20 turns** rather than summarizing it. The reasoning: the **full meeting transcript** is already the memory of the session. Chat history only needs to carry the **conversational thread** of what’s been asked and answered—not re-encode the whole meeting. Twenty turns covers even long, focused Q&A; if you hit the cap, the **transcript context** means nothing important is actually lost. We chose this over a summarization approach to **avoid adding a sequential extra Groq call** before every chat message.
+**Chat history limit (20 turns).** I cap chat history at 20 turns and rely on transcript context as long-term memory. That keeps prompt size controlled without adding another summarization hop before every chat request. Tradeoff: very long side-thread nuance can fall out of chat history while transcript grounding remains.
 
-**Settings & prompt customization.** All prompts and context window sizes are editable at runtime via the **Settings** modal. The edited values are passed in **each request body** to the API routes, which use them **in preference to** the hardcoded defaults. That means the constants in **`lib/prompts.ts`** serve as both the **production defaults** and the **fallback**—if a field is missing or the user resets, behavior matches a **fresh install**. The API key lives in **`localStorage`** and is sent as a **request header**; it never exists as a hardcoded value in the codebase.
+**Settings and prompt customization.** Prompts and context windows are editable at runtime in Settings, then sent on each request body. Routes prefer request values and fall back to `lib/prompts.ts` defaults, so reset behavior is deterministic. Tradeoff: prompt quality can degrade if users enter poor instructions, which is expected by design.
 
 ---
 
@@ -107,7 +99,7 @@ Instead, that earlier slice goes to **`/api/summarize`** first. The system promp
 - [x] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
 - [x] **Chat panel wiring (Phase 4)** — thread messages, streaming send pipeline, suggestion handoff with instant detail preview + streamed follow-up.
 - [x] **Settings modal (Phase 5)** — first-class Groq key entry, editable prompts and context sizes, persisted locally; API routes prefer body overrides over `lib/prompts.ts` defaults.
-- [ ] **Export (Phase 6)** — transcript + suggestions out of the browser in a format people actually use.
+- [x] **Export (Phase 6)** — one-click session export (`transcript`, `suggestionBatches`, `chat`) as structured JSON.
 - [ ] **Prompt tuning (Phase 7)** — keep pressure-testing summarization + suggestion prompts as real meetings surface edge cases.
 
-If you’re reading this README while half the roadmap is still open, you’re not late—you’re just watching the thing get built in public.
+The core app is complete and working end-to-end; what remains is iterative prompt tuning against real meeting transcripts.
