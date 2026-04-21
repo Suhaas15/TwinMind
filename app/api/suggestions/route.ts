@@ -158,6 +158,16 @@ export async function POST(
     typeof record.previousSuggestions === "string"
       ? record.previousSuggestions
       : "";
+  const suggestionsPrompt =
+    typeof record.suggestionsPrompt === "string"
+      ? record.suggestionsPrompt
+      : undefined;
+
+  const activePrompt =
+    typeof suggestionsPrompt === "string" &&
+    suggestionsPrompt.trim().length > 0
+      ? suggestionsPrompt
+      : SUGGESTIONS_PROMPT;
 
   const userMessage = `RECENT TRANSCRIPT:
 ${recentTranscript}
@@ -177,7 +187,7 @@ ${previousSuggestions || "None"}`;
     body: JSON.stringify({
       model: MODELS.suggestions,
       messages: [
-        { role: "system", content: SUGGESTIONS_PROMPT },
+        { role: "system", content: activePrompt },
         { role: "user", content: userMessage },
       ],
       temperature: SUGGESTIONS_TEMPERATURE,

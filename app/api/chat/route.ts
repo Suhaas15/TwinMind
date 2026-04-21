@@ -89,15 +89,28 @@ export async function POST(
 
   const transcriptContextRaw =
     typeof record.transcriptContext === "string" ? record.transcriptContext : "";
+
+  const contextCap =
+    typeof record.chatContextChars === "number" &&
+    Number.isFinite(record.chatContextChars) &&
+    record.chatContextChars > 0
+      ? Math.floor(record.chatContextChars)
+      : CHAT_CONTEXT_CHARS;
+
   const transcriptContext =
-    transcriptContextRaw.length > CHAT_CONTEXT_CHARS
-      ? transcriptContextRaw.slice(-CHAT_CONTEXT_CHARS)
+    transcriptContextRaw.length > contextCap
+      ? transcriptContextRaw.slice(-contextCap)
       : transcriptContextRaw;
+
+  const chatPromptText =
+    typeof record.chatPrompt === "string" && record.chatPrompt.trim() !== ""
+      ? record.chatPrompt
+      : CHAT_PROMPT;
 
   const chatHistory = parseChatHistory(record.chatHistory);
 
   const groqMessages: Array<{ role: string; content: string }> = [
-    { role: "system", content: CHAT_PROMPT },
+    { role: "system", content: chatPromptText },
     { role: "system", content: `MEETING TRANSCRIPT:\n${transcriptContext}` },
     ...chatHistory.map((entry) => ({
       role: entry.role,

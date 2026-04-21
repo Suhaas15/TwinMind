@@ -3,10 +3,8 @@
 // Manages chat messages, Groq SSE streaming via /api/chat, and bridging suggestion preview/detail into the thread.
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  CHAT_CONTEXT_CHARS,
-  GROQ_API_KEY_HEADER,
-} from "@/lib/prompts";
+import { loadTwinmindSettings } from "@/hooks/useSettings";
+import { GROQ_API_KEY_HEADER } from "@/lib/prompts";
 import type { ChatMessage } from "@/types/chat";
 import type { Suggestion } from "@/types/suggestions";
 
@@ -187,8 +185,11 @@ export default function useChat({
         return;
       }
 
-      const apiKey = localStorage.getItem(GROQ_STORAGE_KEY);
-      if (!apiKey?.trim()) {
+      const settings = loadTwinmindSettings();
+      const apiKey =
+        settings.groqApiKey.trim() ||
+        localStorage.getItem(GROQ_STORAGE_KEY)?.trim();
+      if (!apiKey) {
         setError("No Groq API key set — open Settings to add one");
         return;
       }
@@ -237,7 +238,7 @@ export default function useChat({
 
       const transcriptContext = transcriptChunksRef.current
         .join("\n")
-        .slice(-CHAT_CONTEXT_CHARS);
+        .slice(-settings.chatContextChars);
 
       try {
         const response = await fetch("/api/chat", {
@@ -250,6 +251,8 @@ export default function useChat({
             message: trimmed,
             chatHistory,
             transcriptContext,
+            chatPrompt: settings.chatPrompt,
+            chatContextChars: settings.chatContextChars,
           }),
         });
 

@@ -3,11 +3,8 @@
 // Fetches /api/summarize then /api/suggestions using windowed transcript text while recording (plus manual refresh).
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import {
-  EARLIER_CONTEXT_CHARS,
-  GROQ_API_KEY_HEADER,
-  RECENT_CONTEXT_CHARS,
-} from "@/lib/prompts";
+import { loadTwinmindSettings } from "@/hooks/useSettings";
+import { GROQ_API_KEY_HEADER } from "@/lib/prompts";
 import type { Suggestion, SuggestionBatch } from "@/types/suggestions";
 
 const GROQ_STORAGE_KEY = "groq_api_key";
@@ -64,7 +61,11 @@ function isErrorBody(value: unknown): value is ErrorResponseBody {
   );
 }
 
-function buildContextStrings(chunks: readonly string[]): {
+function buildContextStrings(
+  chunks: readonly string[],
+  recentContextChars: number,
+  earlierContextChars: number,
+): {
   recentText: string;
   earlierText: string;
 } {
@@ -72,15 +73,15 @@ function buildContextStrings(chunks: readonly string[]): {
   if (fullText.length === 0) {
     return { recentText: "", earlierText: "" };
   }
-  const recentText = fullText.slice(-RECENT_CONTEXT_CHARS);
+  const recentText = fullText.slice(-recentContextChars);
   const earlierPart = fullText.slice(
     0,
     Math.max(0, fullText.length - recentText.length),
   );
   const earlierText =
-    earlierPart.length <= EARLIER_CONTEXT_CHARS
+    earlierPart.length <= earlierContextChars
       ? earlierPart
-      : earlierPart.slice(-EARLIER_CONTEXT_CHARS);
+      : earlierPart.slice(-earlierContextChars);
   return { recentText, earlierText };
 }
 
@@ -131,8 +132,9 @@ export default function useSuggestions({
       return;
     }
 
-    const apiKey = localStorage.getItem(GROQ_STORAGE_KEY);
-    if (!apiKey?.trim()) {
+    const settings = loadTwinmindSettings();
+    const apiKey = settings.groqApiKey.trim() || localStorage.getItem(GROQ_STORAGE_KEY)?.trim();
+    if (!apiKey) {
       setError("No Groq API key set — open Settings to add one");
       return;
     }
@@ -142,7 +144,11 @@ export default function useSuggestions({
     setError(null);
 
     try {
-      const { recentText, earlierText } = buildContextStrings(chunks);
+      const { recentText, earlierText } = buildContextStrings(
+        chunks,
+        settings.recentContextChars,
+        settings.earlierContextChars,
+      );
 
       let earlierSummary = "";
       if (earlierText.length > 0) {
@@ -152,7 +158,10 @@ export default function useSuggestions({
             "Content-Type": "application/json",
             [GROQ_API_KEY_HEADER]: apiKey,
           },
-          body: JSON.stringify({ earlierTranscript: earlierText }),
+          body: JSON.stringify({
+            earlierTranscript: earlierText,
+            summarizationPrompt: settings.summarizationPrompt,
+          }),
         });
         const summarizePayload: unknown = await summarizeResponse.json();
         if (!summarizeResponse.ok) {
@@ -181,6 +190,7 @@ export default function useSuggestions({
           recentTranscript: recentText,
           earlierSummary,
           previousSuggestions,
+          suggestionsPrompt: settings.suggestionsPrompt,
         }),
       });
 

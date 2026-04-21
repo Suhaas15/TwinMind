@@ -66,6 +66,20 @@ export async function POST(
       ? (body as { earlierTranscript: string }).earlierTranscript
       : "";
 
+  const record =
+    typeof body === "object" && body !== null
+      ? (body as Record<string, unknown>)
+      : {};
+  const summarizationPrompt =
+    typeof record.summarizationPrompt === "string"
+      ? record.summarizationPrompt
+      : undefined;
+  const activePrompt =
+    typeof summarizationPrompt === "string" &&
+    summarizationPrompt.trim().length > 0
+      ? summarizationPrompt
+      : SUMMARIZATION_PROMPT;
+
   if (earlierTranscript === "") {
     return NextResponse.json({ summary: "" });
   }
@@ -79,7 +93,7 @@ export async function POST(
     body: JSON.stringify({
       model: MODELS.summarization,
       messages: [
-        { role: "system", content: SUMMARIZATION_PROMPT },
+        { role: "system", content: activePrompt },
         { role: "user", content: earlierTranscript },
       ],
       max_tokens: SUMMARIZATION_MAX_TOKENS,

@@ -97,6 +97,8 @@ Instead, that earlier slice goes to **`/api/summarize`** first. The system promp
 
 **Chat history limit (20 turns).** We cap chat history at **20 turns** rather than summarizing it. The reasoning: the **full meeting transcript** is already the memory of the session. Chat history only needs to carry the **conversational thread** of what’s been asked and answered—not re-encode the whole meeting. Twenty turns covers even long, focused Q&A; if you hit the cap, the **transcript context** means nothing important is actually lost. We chose this over a summarization approach to **avoid adding a sequential extra Groq call** before every chat message.
 
+**Settings & prompt customization.** All prompts and context window sizes are editable at runtime via the **Settings** modal. The edited values are passed in **each request body** to the API routes, which use them **in preference to** the hardcoded defaults. That means the constants in **`lib/prompts.ts`** serve as both the **production defaults** and the **fallback**—if a field is missing or the user resets, behavior matches a **fresh install**. The API key lives in **`localStorage`** and is sent as a **request header**; it never exists as a hardcoded value in the codebase.
+
 ---
 
 ## What’s Left / Roadmap (for now)
@@ -104,7 +106,7 @@ Instead, that earlier slice goes to **`/api/summarize`** first. The system promp
 - [x] **Transcription hardening (Phase 2)** — fixed invalid timeslice chunks for Whisper, killed the “init segment + every delta” duplication bug, moved to **30s stop/restart** self-contained WebM segments.
 - [x] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
 - [x] **Chat panel wiring (Phase 4)** — thread messages, streaming send pipeline, suggestion handoff with instant detail preview + streamed follow-up.
-- [ ] **Settings modal (Phase 5)** — first-class Groq key entry instead of devtools/localStorage yoga.
+- [x] **Settings modal (Phase 5)** — first-class Groq key entry, editable prompts and context sizes, persisted locally; API routes prefer body overrides over `lib/prompts.ts` defaults.
 - [ ] **Export (Phase 6)** — transcript + suggestions out of the browser in a format people actually use.
 - [ ] **Prompt tuning (Phase 7)** — keep pressure-testing summarization + suggestion prompts as real meetings surface edge cases.
 
