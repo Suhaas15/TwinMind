@@ -105,16 +105,3 @@ The layout is desktop-first by design — a meeting copilot lives on the same sc
 
 On the accessibility side: the mic button carries `aria-label` and `aria-pressed` so screen readers announce recording state. Suggestion cards are fully keyboard navigable with Enter/Space activation. The chat message list has `aria-live="polite"` so new messages are announced. The settings modal traps focus when open and auto-focuses the API key field. All icon-only buttons have explicit `aria-label` attributes.
 
----
-
-## What’s Left / Roadmap (for now)
-
-- [x] **Transcription hardening (Phase 2)** — fixed invalid timeslice chunks for Whisper, killed the “init segment + every delta” duplication bug, moved to **30s stop/restart** self-contained WebM segments.
-- [x] **Suggestion engine (Phase 3)** — batch suggestions off transcript windows, prepend batches in the middle column.
-- [x] **Chat panel wiring (Phase 4)** — thread messages, streaming send pipeline, suggestion handoff with instant detail preview + streamed follow-up.
-- [x] **Settings modal (Phase 5)** — first-class Groq key entry, editable prompts and context sizes, persisted locally; API routes prefer body overrides over `lib/prompts.ts` defaults.
-- [x] **Export (Phase 6)** — one-click session export (`transcript`, `suggestionBatches`, `chat`) as structured JSON.
-- [x] **Polish pass (Phase 7a)** — chat response conciseness prompt, manual refresh flushes pending audio per spec, responsive stacked layout below 1024px, full keyboard and screen-reader accessibility pass.
-- [x] **Prompt tuning (Phase 7b)** — verified across multiple real sessions including a 9-batch Dan Pink motivation talk test. Fact checks, clarifies, and talking points all fired correctly. No structural prompt changes needed.
-
-**The app is complete and submission-ready.**
