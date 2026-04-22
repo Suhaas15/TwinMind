@@ -71,6 +71,8 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 
 **Instant detail preview + streaming.** Clicking a suggestion inserts its `detail` immediately, then streams a fuller answer underneath. This makes interaction feel responsive in live-call conditions where dead time kills trust. Users get immediate value plus richer follow-up without waiting on full completion—users may read the preview as final before the stream finishes.
 
+**Prompt tuning results.** After testing across multiple real sessions — a classroom discussion on silence and poetry, a talk on the butterfly effect, and a full Dan Pink TED talk on motivation — the prompt strategy held up well. Fact checks fired on specific quantitative claims (Glucksberg's 3.5-minute incentive condition slowdown, the origin of the candle problem). Clarify suggestions caught newly introduced terms like 'functional fixedness' at exactly the right moment. Type distribution stayed varied across all 9 batches of the motivation session without feeling formulaic. No structural prompt changes were needed after live testing — the five-type vocabulary, the anti-repeat context, and the two-layer windowing held up across different conversation styles.
+
 ---
 
 ## Tradeoffs & Decisions
@@ -88,6 +90,8 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 **Streaming chat responses.** Chat uses SSE so first token latency is typically **~200-400ms** instead of waiting several seconds for full completion. In a live meeting, that response shape materially improves usability. Tradeoff: stream parsing/state handling is more complex than one-shot JSON.
 
 **Manual refresh flushes pending audio first.** The spec requires the reload button to update the transcript before generating suggestions. We implement this by calling `flushCurrentChunk()` — which stops the current recorder segment early and lets `onstop` transcribe it — then firing suggestion generation 500ms later. The gap is a pragmatic head start, not a guaranteed await; on slow networks suggestions can occasionally fire before the final transcript chunk lands. The tradeoff is simplicity over perfect sequencing.
+
+**System audio capture — attempted and removed.** We explored adding getDisplayMedia-based system audio capture so both sides of a virtual meeting could be transcribed. The implementation mixed mic and tab audio via Web Audio API's AudioContext into a single MediaRecorder stream. It proved unreliable on macOS Chrome due to how WebRTC audio is routed internally in tools like Google Meet — tab audio capture does not intercept WebRTC streams. Rather than ship a feature that works inconsistently, we removed it. The mic-only path is reliable and sufficient for the intended use case: during a live interview, the interviewer's questions provide enough spoken context for the suggestion engine to generate useful nudges from the speaker's side alone.
 
 **Chat history limit (20 turns).** I cap chat history at 20 turns and rely on transcript context as long-term memory. That keeps prompt size controlled without adding another summarization hop before every chat request. Tradeoff: very long side-thread nuance can fall out of chat history while transcript grounding remains.
 
@@ -111,6 +115,6 @@ On the accessibility side: the mic button carries `aria-label` and `aria-pressed
 - [x] **Settings modal (Phase 5)** — first-class Groq key entry, editable prompts and context sizes, persisted locally; API routes prefer body overrides over `lib/prompts.ts` defaults.
 - [x] **Export (Phase 6)** — one-click session export (`transcript`, `suggestionBatches`, `chat`) as structured JSON.
 - [x] **Polish pass (Phase 7a)** — chat response conciseness prompt, manual refresh flushes pending audio per spec, responsive stacked layout below 1024px, full keyboard and screen-reader accessibility pass.
-- [ ] **Prompt tuning (Phase 7b)** — keep pressure-testing summarization and suggestion prompts as real meetings surface edge cases.
+- [x] **Prompt tuning (Phase 7b)** — verified across multiple real sessions including a 9-batch Dan Pink motivation talk test. Fact checks, clarifies, and talking points all fired correctly. No structural prompt changes needed.
 
-The core app is complete and working end-to-end; what remains is iterative prompt tuning against real meeting transcripts.
+**The app is complete and submission-ready.**
