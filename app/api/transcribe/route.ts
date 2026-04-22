@@ -3,6 +3,7 @@
 
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
+import { groqApiErrorMessage } from "@/lib/groq-route-helpers";
 import { GROQ_API_KEY_HEADER, MODELS } from "@/lib/prompts";
 
 const GROQ_TRANSCRIBE_URL =
@@ -10,15 +11,6 @@ const GROQ_TRANSCRIBE_URL =
 /** Audio smaller than this is treated as noise and skipped without calling Groq. */
 const MIN_AUDIO_BYTES_FOR_GROQ = 1000;
 const TRANSCRIBE_UPLOAD_FILENAME = "chunk.webm";
-
-function groqFailureMessage(parsed: unknown): string {
-  if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
-    return "Transcription failed";
-  }
-  const container = parsed as { error?: { message?: unknown } };
-  const message = container.error?.message;
-  return typeof message === "string" ? message : "Transcription failed";
-}
 
 export async function POST(
   request: NextRequest,
@@ -58,13 +50,21 @@ export async function POST(
   outbound.append("model", MODELS.transcription);
   outbound.append("response_format", "json");
 
-  const groqResponse = await fetch(GROQ_TRANSCRIBE_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-    },
-    body: outbound,
-  });
+  let groqResponse: Response;
+  try {
+    groqResponse = await fetch(GROQ_TRANSCRIBE_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+      },
+      body: outbound,
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not reach transcription service" },
+      { status: 502 },
+    );
+  }
 
   const rawText = await groqResponse.text();
   let parsed: unknown;
@@ -78,7 +78,7 @@ export async function POST(
   }
 
   if (!groqResponse.ok) {
-    const message = groqFailureMessage(parsed);
+    const message = groqApiErrorMessage(parsed, "Transcription failed");
     return NextResponse.json({ error: message }, { status: groqResponse.status });
   }
 

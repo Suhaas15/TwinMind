@@ -4,36 +4,23 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadTwinmindSettings } from "@/hooks/useSettings";
-import { GROQ_API_KEY_HEADER } from "@/lib/prompts";
+import { isErrorResponseBody } from "@/lib/api-response";
+import { CHAT_HISTORY_MAX_MESSAGES, GROQ_API_KEY_HEADER } from "@/lib/prompts";
 import type { ChatMessage } from "@/types/chat";
 import type { Suggestion } from "@/types/suggestions";
 
 const GROQ_STORAGE_KEY = "groq_api_key";
-const CHAT_HISTORY_CLIENT_MAX = 20;
 
 interface ChatHistoryEntry {
   role: "user" | "assistant";
   content: string;
 }
 
-interface ErrorResponseBody {
-  error: string;
-}
-
-function isErrorBody(value: unknown): value is ErrorResponseBody {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof (value as ErrorResponseBody).error === "string"
-  );
-}
-
 function toApiHistory(messages: readonly ChatMessage[]): ChatHistoryEntry[] {
   return messages
     .filter((message) => !message.isStreaming && !message.isDetail)
     .map((message) => ({ role: message.role, content: message.content }))
-    .slice(-CHAT_HISTORY_CLIENT_MAX);
+    .slice(-CHAT_HISTORY_MAX_MESSAGES);
 }
 
 function extractDeltaContent(data: unknown): string | null {
@@ -261,7 +248,7 @@ export default function useChat({
           let messageText = "Chat request failed";
           try {
             const payload: unknown = await response.json();
-            if (isErrorBody(payload)) {
+            if (isErrorResponseBody(payload)) {
               messageText = payload.error;
             }
           } catch {

@@ -3,15 +3,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
+  GROQ_CHAT_COMPLETIONS_URL,
+  groqApiErrorMessage,
+} from "@/lib/groq-route-helpers";
+import {
   CHAT_CONTEXT_CHARS,
+  CHAT_HISTORY_MAX_MESSAGES,
   CHAT_MAX_TOKENS,
   CHAT_PROMPT,
   GROQ_API_KEY_HEADER,
   MODELS,
 } from "@/lib/prompts";
-
-const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
-const CHAT_HISTORY_MAX_MESSAGES = 20;
 
 interface ChatHistoryEntry {
   role: "user" | "assistant";
@@ -39,15 +41,6 @@ function parseChatHistory(raw: unknown): ChatHistoryEntry[] {
     entries.push({ role, content });
   }
   return entries.slice(-CHAT_HISTORY_MAX_MESSAGES);
-}
-
-function groqErrorMessageFromBody(parsed: unknown): string {
-  if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
-    return "Chat request failed";
-  }
-  const container = parsed as { error?: { message?: unknown } };
-  const message = container.error?.message;
-  return typeof message === "string" ? message : "Chat request failed";
 }
 
 export async function POST(
@@ -119,19 +112,27 @@ export async function POST(
     { role: "user", content: message },
   ];
 
-  const groqResponse = await fetch(GROQ_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODELS.chat,
-      messages: groqMessages,
-      stream: true,
-      max_tokens: CHAT_MAX_TOKENS,
-    }),
-  });
+  let groqResponse: Response;
+  try {
+    groqResponse = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODELS.chat,
+        messages: groqMessages,
+        stream: true,
+        max_tokens: CHAT_MAX_TOKENS,
+      }),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not reach chat service" },
+      { status: 502 },
+    );
+  }
 
   if (!groqResponse.ok) {
     const rawText = await groqResponse.text();
@@ -144,7 +145,7 @@ export async function POST(
         { status: groqResponse.status },
       );
     }
-    const errText = groqErrorMessageFromBody(parsed);
+    const errText = groqApiErrorMessage(parsed, "Chat request failed");
     return NextResponse.json({ error: errText }, { status: groqResponse.status });
   }
 

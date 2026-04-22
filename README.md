@@ -67,7 +67,7 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 
 **Previous suggestions in the loop.** Each refresh includes the last batch previews as anti-repeat context. That simple addition noticeably reduces duplicate nudges when conversation stalls or loops. It is cheap, explicit, and model-friendly. The risk is that if previous suggestions were wrong, they still influence the next pass.
 
-**Chat — transcript as ground truth.** Chat always receives meeting transcript context as a separate system block, distinct from instruction text. That keeps answers anchored to what was actually said instead of drifting into generic assistant behavior. The model can infer and synthesize, but it is not asked to invent missing meeting facts—if the transcript misses speech, chat inherits that blind spot.
+**Chat — transcript as ground truth, answers kept tight.** Chat always receives the meeting transcript as a separate system block, distinct from instruction text. That keeps answers anchored to what was actually said — the model can infer and synthesize, but it is not invited to invent missing meeting facts. The chat prompt also enforces conciseness explicitly: 3-5 sentences for most questions, lead with the answer, no preamble. A model this capable will happily write paragraphs when asked nothing — the prompt is what keeps it useful in a live meeting context rather than impressive in a vacuum.
 
 **Instant detail preview + streaming.** Clicking a suggestion inserts its `detail` immediately, then streams a fuller answer underneath. This makes interaction feel responsive in live-call conditions where dead time kills trust. Users get immediate value plus richer follow-up without waiting on full completion—users may read the preview as final before the stream finishes.
 
@@ -87,9 +87,19 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 
 **Streaming chat responses.** Chat uses SSE so first token latency is typically **~200-400ms** instead of waiting several seconds for full completion. In a live meeting, that response shape materially improves usability. Tradeoff: stream parsing/state handling is more complex than one-shot JSON.
 
+**Manual refresh flushes pending audio first.** The spec requires the reload button to update the transcript before generating suggestions. We implement this by calling `flushCurrentChunk()` — which stops the current recorder segment early and lets `onstop` transcribe it — then firing suggestion generation 500ms later. The gap is a pragmatic head start, not a guaranteed await; on slow networks suggestions can occasionally fire before the final transcript chunk lands. The tradeoff is simplicity over perfect sequencing.
+
 **Chat history limit (20 turns).** I cap chat history at 20 turns and rely on transcript context as long-term memory. That keeps prompt size controlled without adding another summarization hop before every chat request. Tradeoff: very long side-thread nuance can fall out of chat history while transcript grounding remains.
 
 **Settings and prompt customization.** Prompts and context windows are editable at runtime in Settings, then sent on each request body. Routes prefer request values and fall back to `lib/prompts.ts` defaults, so reset behavior is deterministic. Tradeoff: prompt quality can degrade if users enter poor instructions, which is expected by design.
+
+---
+
+## Responsiveness & Accessibility
+
+The layout is desktop-first by design — a meeting copilot lives on the same screen as your video call, not on a phone. On large screens (1024px+) you get the full three-column experience. Below that, the columns stack vertically, each taking full width and 50vh of height with independent scroll, so the app remains usable on smaller displays without the layout collapsing.
+
+On the accessibility side: the mic button carries `aria-label` and `aria-pressed` so screen readers announce recording state. Suggestion cards are fully keyboard navigable with Enter/Space activation. The chat message list has `aria-live="polite"` so new messages are announced. The settings modal traps focus when open and auto-focuses the API key field. All icon-only buttons have explicit `aria-label` attributes.
 
 ---
 
@@ -100,6 +110,7 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 - [x] **Chat panel wiring (Phase 4)** — thread messages, streaming send pipeline, suggestion handoff with instant detail preview + streamed follow-up.
 - [x] **Settings modal (Phase 5)** — first-class Groq key entry, editable prompts and context sizes, persisted locally; API routes prefer body overrides over `lib/prompts.ts` defaults.
 - [x] **Export (Phase 6)** — one-click session export (`transcript`, `suggestionBatches`, `chat`) as structured JSON.
-- [ ] **Prompt tuning (Phase 7)** — keep pressure-testing summarization + suggestion prompts as real meetings surface edge cases.
+- [x] **Polish pass (Phase 7a)** — chat response conciseness prompt, manual refresh flushes pending audio per spec, responsive stacked layout below 1024px, full keyboard and screen-reader accessibility pass.
+- [ ] **Prompt tuning (Phase 7b)** — keep pressure-testing summarization and suggestion prompts as real meetings surface edge cases.
 
 The core app is complete and working end-to-end; what remains is iterative prompt tuning against real meeting transcripts.

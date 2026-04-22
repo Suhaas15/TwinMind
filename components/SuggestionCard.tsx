@@ -1,6 +1,9 @@
 // One tappable suggestion tile: type chip, preview line, dimmed when not in the newest batch.
 
-import type { ReactElement } from "react";
+import type {
+  KeyboardEvent as ReactKeyboardEvent,
+  ReactElement,
+} from "react";
 import type { Suggestion } from "@/types/suggestions";
 
 interface SuggestionCardProps {
@@ -35,13 +38,23 @@ export default function SuggestionCard({
 }: SuggestionCardProps): ReactElement {
   const dimmed = !isLatestBatch ? "opacity-50" : "";
 
+  const handleKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>): void => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      onSelect(suggestion);
+    }
+  };
+
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={() => {
         onSelect(suggestion);
       }}
-      className={`w-full cursor-pointer rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 text-left transition-colors hover:bg-neutral-800 ${dimmed}`}
+      onKeyDown={handleKeyDown}
+      aria-label={`${suggestion.type}: ${suggestion.preview}`}
+      className={`w-full cursor-pointer rounded-lg border border-neutral-700 bg-neutral-900/50 p-4 text-left transition-colors hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-500 ${dimmed}`}
     >
       <span
         className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium uppercase ${typeBadgeClasses(suggestion.type)}`}
@@ -49,6 +62,6 @@ export default function SuggestionCard({
         {suggestion.type.replaceAll("_", " ")}
       </span>
       <p className="mt-2 text-sm text-white">{suggestion.preview}</p>
-    </button>
+    </div>
   );
 }

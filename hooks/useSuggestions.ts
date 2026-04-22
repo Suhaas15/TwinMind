@@ -4,6 +4,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { loadTwinmindSettings } from "@/hooks/useSettings";
+import { isErrorResponseBody } from "@/lib/api-response";
 import { GROQ_API_KEY_HEADER } from "@/lib/prompts";
 import type { Suggestion, SuggestionBatch } from "@/types/suggestions";
 
@@ -17,10 +18,6 @@ interface UseSuggestionsArgs {
 
 interface SummarizeSuccessResponse {
   summary: string;
-}
-
-interface ErrorResponseBody {
-  error: string;
 }
 
 interface SuggestionsSuccessResponse {
@@ -50,15 +47,6 @@ function isSuggestionsSuccess(
     return false;
   }
   return (value as SuggestionsSuccessResponse).suggestions.length === 3;
-}
-
-function isErrorBody(value: unknown): value is ErrorResponseBody {
-  return (
-    typeof value === "object" &&
-    value !== null &&
-    "error" in value &&
-    typeof (value as ErrorResponseBody).error === "string"
-  );
 }
 
 function buildContextStrings(
@@ -165,7 +153,7 @@ export default function useSuggestions({
         });
         const summarizePayload: unknown = await summarizeResponse.json();
         if (!summarizeResponse.ok) {
-          const message = isErrorBody(summarizePayload)
+          const message = isErrorResponseBody(summarizePayload)
             ? summarizePayload.error
             : "Summarization failed";
           setError(message);
@@ -196,7 +184,7 @@ export default function useSuggestions({
 
       const suggestionsPayload: unknown = await suggestionsResponse.json();
       if (!suggestionsResponse.ok) {
-        const message = isErrorBody(suggestionsPayload)
+        const message = isErrorResponseBody(suggestionsPayload)
           ? suggestionsPayload.error
           : "Suggestions failed";
         setError(message);

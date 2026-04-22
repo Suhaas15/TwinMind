@@ -24,7 +24,7 @@ function InfoCard({ children }: InfoCardProps): ReactElement {
 interface LiveSuggestionsProps {
   batches: SuggestionBatch[];
   isLoading: boolean;
-  triggerRefresh: () => void;
+  onManualRefresh: () => void;
   error: string | null;
   onSuggestionSelect: (suggestion: Suggestion) => void;
 }
@@ -32,16 +32,18 @@ interface LiveSuggestionsProps {
 export default function LiveSuggestions({
   batches,
   isLoading,
-  triggerRefresh,
+  onManualRefresh,
   error,
   onSuggestionSelect,
 }: LiveSuggestionsProps): ReactElement {
   const [countdownSeconds, setCountdownSeconds] =
     useState(COUNTDOWN_INITIAL_SECONDS);
+  const [refreshTriggerCount, setRefreshTriggerCount] =
+    useState<number>(0);
 
   useEffect(() => {
     setCountdownSeconds(COUNTDOWN_INITIAL_SECONDS);
-  }, [batches.length]);
+  }, [batches.length, refreshTriggerCount]);
 
   useEffect(() => {
     const intervalId = window.setInterval(() => {
@@ -53,9 +55,9 @@ export default function LiveSuggestions({
   }, []);
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-neutral-800">
+    <section className="flex h-[50vh] min-h-0 w-full shrink-0 flex-col border-r border-neutral-800 lg:h-auto lg:min-h-0 lg:min-w-0 lg:flex-1 lg:shrink">
       <header className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-5 py-4">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-neutral-500">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500 lg:tracking-widest">
           2. LIVE SUGGESTIONS
         </h2>
         <span className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -67,7 +69,8 @@ export default function LiveSuggestions({
           <button
             type="button"
             onClick={() => {
-              triggerRefresh();
+              setRefreshTriggerCount((previous) => previous + 1);
+              onManualRefresh();
             }}
             disabled={isLoading}
             className={`rounded-md border border-neutral-700 bg-neutral-900/60 px-3 py-1.5 text-xs font-medium uppercase tracking-wide text-neutral-300 transition-colors hover:border-neutral-500 hover:bg-neutral-800/80 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 ${

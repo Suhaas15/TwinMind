@@ -19,6 +19,7 @@ export default function Home(): ReactElement {
     isRecording,
     startRecording,
     stopRecording,
+    flushCurrentChunk,
     error: recordingError,
   } = useMicRecorder();
 
@@ -56,10 +57,20 @@ export default function Home(): ReactElement {
     setPendingSuggestion(null);
   }, []);
 
+  const handleManualRefresh = useCallback((): void => {
+    flushCurrentChunk();
+    setTimeout(() => {
+      triggerRefresh();
+    }, 500);
+  }, [flushCurrentChunk, triggerRefresh]);
+
+  const exportDisabled =
+    transcriptChunks.length === 0 && batches.length === 0;
+
   return (
     <div className="flex h-dvh min-h-0 w-full flex-col bg-[#0a0a0a] text-neutral-200">
       <div className="flex h-12 w-full items-center justify-between border-b border-neutral-800 bg-neutral-950 px-4">
-        <span className="text-sm font-medium tracking-widest uppercase text-neutral-400">
+        <span className="min-w-0 flex-1 truncate pr-2 text-sm font-medium tracking-widest uppercase text-neutral-400">
           TwinMind Live Suggestions
         </span>
         <div className="flex items-center gap-3">
@@ -72,11 +83,11 @@ export default function Home(): ReactElement {
                 chatMessages: messages,
               });
             }}
-            disabled={transcriptChunks.length === 0 && batches.length === 0}
+            disabled={exportDisabled}
+            aria-label="Export session as JSON"
+            aria-disabled={exportDisabled}
             className={`rounded border border-neutral-700 px-3 py-1 text-xs uppercase tracking-widest text-neutral-400 transition-colors hover:border-neutral-500 hover:text-white ${
-              transcriptChunks.length === 0 && batches.length === 0
-                ? "cursor-not-allowed opacity-40"
-                : ""
+              exportDisabled ? "cursor-not-allowed opacity-40" : ""
             }`}
           >
             Export Session
@@ -87,7 +98,7 @@ export default function Home(): ReactElement {
               setIsSettingsOpen((open) => !open);
             }}
             className="flex h-9 w-9 items-center justify-center rounded-lg bg-neutral-800 text-neutral-400 transition-colors hover:bg-neutral-700 hover:text-white"
-            aria-label="Settings"
+            aria-label="Open settings"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
@@ -117,7 +128,7 @@ export default function Home(): ReactElement {
           setIsSettingsOpen(false);
         }}
       />
-      <div className="flex min-h-0 w-full flex-1 flex-row">
+      <div className="flex min-h-0 w-full flex-1 flex-col lg:flex-row">
         <MicTranscript
           transcriptChunks={transcriptChunks}
           isRecording={isRecording}
@@ -127,7 +138,7 @@ export default function Home(): ReactElement {
         <LiveSuggestions
           batches={batches}
           isLoading={isLoading}
-          triggerRefresh={triggerRefresh}
+          onManualRefresh={handleManualRefresh}
           error={error}
           onSuggestionSelect={handleSuggestionSelect}
         />

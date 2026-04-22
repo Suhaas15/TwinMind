@@ -25,6 +25,7 @@ interface UseMicRecorderResult {
   transcriptChunks: string[];
   startRecording: () => Promise<void>;
   stopRecording: () => void;
+  flushCurrentChunk: () => void;
   error: string | null;
 }
 
@@ -89,6 +90,12 @@ export default function useMicRecorder(): UseMicRecorderResult {
       streamRef.current = null;
     }
   }, [clearChunkInterval]);
+
+  const flushCurrentChunk = useCallback((): void => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+  }, []);
 
   const stopRecording = useCallback((): void => {
     clearChunkInterval();
@@ -264,6 +271,7 @@ export default function useMicRecorder(): UseMicRecorderResult {
     transcriptChunks,
     startRecording,
     stopRecording,
+    flushCurrentChunk,
     error,
   };
 }

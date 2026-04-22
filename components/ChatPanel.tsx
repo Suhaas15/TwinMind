@@ -119,9 +119,9 @@ export default function ChatPanel({
   }, [inputValue, isStreaming, sendMessage]);
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <section className="flex h-[50vh] min-h-0 w-full shrink-0 flex-col lg:h-auto lg:min-h-0 lg:min-w-0 lg:flex-1 lg:shrink">
       <header className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-5 py-4">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-neutral-500">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500 lg:tracking-widest">
           3. CHAT (DETAILED ANSWERS)
         </h2>
         <span className="rounded-full border border-neutral-700 bg-neutral-900/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-neutral-400">
@@ -130,7 +130,7 @@ export default function ChatPanel({
       </header>
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="min-h-0 flex-1 overflow-y-auto px-5 py-6">
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4" aria-live="polite">
             {messages.length === 0 ? (
               <>
                 <InfoCard>
@@ -156,13 +156,11 @@ export default function ChatPanel({
 
         <footer className="shrink-0 border-t border-neutral-800 bg-[#0a0a0a]/95 px-5 py-4 backdrop-blur-sm">
           <div className="flex gap-3">
-            <label htmlFor="chat-input" className="sr-only">
-              Ask anything
-            </label>
             <input
               id="chat-input"
               name="message"
               type="text"
+              aria-label="Type a message"
               value={inputValue}
               onChange={(event) => {
                 setInputValue(event.target.value);
@@ -180,6 +178,7 @@ export default function ChatPanel({
             <button
               type="button"
               disabled={isStreaming}
+              aria-label="Send message"
               onClick={() => {
                 void submitFromInput();
               }}

@@ -16,7 +16,7 @@ function MicButton({ isRecording, onToggle }: MicButtonProps): ReactElement {
       onClick={onToggle}
       aria-pressed={isRecording}
       aria-label={isRecording ? "Stop recording" : "Start recording"}
-      className={`flex size-28 items-center justify-center rounded-full border-2 shadow-lg transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 ${
+      className={`flex size-28 items-center justify-center rounded-full border-2 shadow-lg transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 focus:ring-offset-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-blue-400 ${
         isRecording
           ? "animate-pulse border-red-400/60 bg-red-600 text-white"
           : "border-blue-500/40 bg-blue-600 text-white hover:bg-blue-500"
@@ -71,9 +71,9 @@ export default function MicTranscript({
   }
 
   return (
-    <section className="flex min-h-0 min-w-0 flex-1 flex-col border-r border-neutral-800">
+    <section className="flex h-[50vh] min-h-0 w-full shrink-0 flex-col border-r border-neutral-800 lg:h-auto lg:min-h-0 lg:min-w-0 lg:flex-1 lg:shrink">
       <header className="flex shrink-0 items-center justify-between border-b border-neutral-800 px-5 py-4">
-        <h2 className="text-xs font-medium uppercase tracking-widest text-neutral-500">
+        <h2 className="text-xs font-medium uppercase tracking-wider text-neutral-500 lg:tracking-widest">
           1. MIC & TRANSCRIPT
         </h2>
         <span

@@ -4,38 +4,17 @@
 import type { NextRequest } from "next/server";
 import { NextResponse } from "next/server";
 import {
+  extractGroqChatAssistantContent,
+  GROQ_CHAT_COMPLETIONS_URL,
+  groqApiErrorMessage,
+} from "@/lib/groq-route-helpers";
+import {
   GROQ_API_KEY_HEADER,
   MODELS,
   SUMMARIZATION_MAX_TOKENS,
   SUMMARIZATION_PROMPT,
   SUMMARIZATION_TEMPERATURE,
 } from "@/lib/prompts";
-
-const GROQ_CHAT_URL = "https://api.groq.com/openai/v1/chat/completions";
-
-interface SummarizeBody {
-  earlierTranscript?: unknown;
-}
-
-function groqChatFailureMessage(parsed: unknown): string {
-  if (typeof parsed !== "object" || parsed === null || !("error" in parsed)) {
-    return "Summarization failed";
-  }
-  const container = parsed as { error?: { message?: unknown } };
-  const message = container.error?.message;
-  return typeof message === "string" ? message : "Summarization failed";
-}
-
-function extractAssistantText(parsed: unknown): string | null {
-  if (typeof parsed !== "object" || parsed === null) {
-    return null;
-  }
-  const root = parsed as {
-    choices?: Array<{ message?: { content?: unknown } }>;
-  };
-  const content = root.choices?.[0]?.message?.content;
-  return typeof content === "string" ? content : null;
-}
 
 export async function POST(
   request: NextRequest,
@@ -58,25 +37,30 @@ export async function POST(
     );
   }
 
+  if (
+    typeof body !== "object" ||
+    body === null ||
+    Array.isArray(body)
+  ) {
+    return NextResponse.json(
+      { error: "Invalid request body" },
+      { status: 400 },
+    );
+  }
+
+  const record = body as Record<string, unknown>;
+
   const earlierTranscript =
-    typeof body === "object" &&
-    body !== null &&
-    "earlierTranscript" in body &&
-    typeof (body as SummarizeBody).earlierTranscript === "string"
-      ? (body as { earlierTranscript: string }).earlierTranscript
+    typeof record.earlierTranscript === "string"
+      ? record.earlierTranscript
       : "";
 
-  const record =
-    typeof body === "object" && body !== null
-      ? (body as Record<string, unknown>)
-      : {};
   const summarizationPrompt =
     typeof record.summarizationPrompt === "string"
       ? record.summarizationPrompt
       : undefined;
   const activePrompt =
-    typeof summarizationPrompt === "string" &&
-    summarizationPrompt.trim().length > 0
+    summarizationPrompt !== undefined && summarizationPrompt.trim().length > 0
       ? summarizationPrompt
       : SUMMARIZATION_PROMPT;
 
@@ -84,22 +68,30 @@ export async function POST(
     return NextResponse.json({ summary: "" });
   }
 
-  const groqResponse = await fetch(GROQ_CHAT_URL, {
-    method: "POST",
-    headers: {
-      Authorization: `Bearer ${apiKey.trim()}`,
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({
-      model: MODELS.summarization,
-      messages: [
-        { role: "system", content: activePrompt },
-        { role: "user", content: earlierTranscript },
-      ],
-      max_tokens: SUMMARIZATION_MAX_TOKENS,
-      temperature: SUMMARIZATION_TEMPERATURE,
-    }),
-  });
+  let groqResponse: Response;
+  try {
+    groqResponse = await fetch(GROQ_CHAT_COMPLETIONS_URL, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${apiKey.trim()}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: MODELS.summarization,
+        messages: [
+          { role: "system", content: activePrompt },
+          { role: "user", content: earlierTranscript },
+        ],
+        max_tokens: SUMMARIZATION_MAX_TOKENS,
+        temperature: SUMMARIZATION_TEMPERATURE,
+      }),
+    });
+  } catch {
+    return NextResponse.json(
+      { error: "Could not reach summarization service" },
+      { status: 502 },
+    );
+  }
 
   const rawText = await groqResponse.text();
   let parsed: unknown;
@@ -113,11 +105,11 @@ export async function POST(
   }
 
   if (!groqResponse.ok) {
-    const message = groqChatFailureMessage(parsed);
+    const message = groqApiErrorMessage(parsed, "Summarization failed");
     return NextResponse.json({ error: message }, { status: groqResponse.status });
   }
 
-  const text = extractAssistantText(parsed);
+  const text = extractGroqChatAssistantContent(parsed);
   if (text === null) {
     return NextResponse.json(
       { error: "Invalid summarization response" },

@@ -2,8 +2,22 @@
 
 // Full-screen overlay for editing Groq key, transcript context sizes, and prompt templates stored in localStorage.
 
-import { useCallback, useEffect, type ReactElement } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  type KeyboardEvent,
+  type ReactElement,
+} from "react";
 import useSettings from "@/hooks/useSettings";
+
+function getFocusableElements(container: HTMLElement): HTMLElement[] {
+  const selector =
+    "button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+  return Array.from(container.querySelectorAll<HTMLElement>(selector)).filter(
+    (element) => element.getAttribute("aria-hidden") !== "true",
+  );
+}
 
 interface SettingsModalProps {
   isOpen: boolean;
@@ -16,12 +30,24 @@ export default function SettingsModal({
 }: SettingsModalProps): ReactElement | null {
   const { settings, updateSetting, saveSettings, resetToDefaults } =
     useSettings();
+  const panelRef = useRef<HTMLDivElement>(null);
+  const groqKeyInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     if (!isOpen) {
       return;
     }
-    const onKeyDown = (event: KeyboardEvent): void => {
+    const frameId = window.requestAnimationFrame(() => {
+      groqKeyInputRef.current?.focus();
+    });
+    return () => window.cancelAnimationFrame(frameId);
+  }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      return;
+    }
+    const onKeyDown = (event: globalThis.KeyboardEvent): void => {
       if (event.key === "Escape") {
         onClose();
       }
@@ -29,6 +55,35 @@ export default function SettingsModal({
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [isOpen, onClose]);
+
+  const handlePanelKeyDown = useCallback(
+    (event: KeyboardEvent<HTMLDivElement>): void => {
+      if (event.key !== "Tab") {
+        return;
+      }
+      const panel = panelRef.current;
+      if (!panel) {
+        return;
+      }
+      const focusable = getFocusableElements(panel);
+      if (focusable.length === 0) {
+        return;
+      }
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      const active = document.activeElement;
+      if (event.shiftKey) {
+        if (active === first) {
+          event.preventDefault();
+          last.focus();
+        }
+      } else if (active === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    },
+    [],
+  );
 
   const handleSave = useCallback((): void => {
     saveSettings();
@@ -42,14 +97,16 @@ export default function SettingsModal({
   return (
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 p-4"
-      role="dialog"
-      aria-modal="true"
-      aria-labelledby="settings-title"
       onClick={onClose}
     >
       <div
+        ref={panelRef}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Settings"
         className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-xl bg-neutral-900"
         onClick={(event) => event.stopPropagation()}
+        onKeyDown={handlePanelKeyDown}
       >
         <div className="shrink-0 border-b border-neutral-800 p-8 pb-6">
           <div className="flex items-start justify-between gap-4">
@@ -80,6 +137,7 @@ export default function SettingsModal({
                 Groq API Key
               </label>
               <input
+                ref={groqKeyInputRef}
                 id="settings-groq-key"
                 type="password"
                 autoComplete="off"
