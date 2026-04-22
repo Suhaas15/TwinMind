@@ -97,6 +97,22 @@ The browser’s **MediaRecorder** runs on a **30 second stop/restart cycle** on 
 
 **Settings and prompt customization.** Prompts and context windows are editable at runtime in Settings, then sent on each request body. Routes prefer request values and fall back to `lib/prompts.ts` defaults, so reset behavior is deterministic. Tradeoff: prompt quality can degrade if users enter poor instructions, which is expected by design.
 
+## Known Limitations & Future Work
+
+### One-sided transcription in virtual meetings
+The app captures microphone input only. In an in-person meeting this works well — the mic picks up everyone in the room. In a virtual meeting (Zoom, Google Meet), only the local speaker's voice is captured; the remote participant's audio comes through speakers but isn't reliably transcribed.
+
+We explored getDisplayMedia-based tab audio capture to mix both mic and system audio into a single MediaRecorder stream via the Web Audio API's AudioContext. It works for standard browser tab audio (YouTube, etc.) but fails for virtual meeting tools like Google Meet because WebRTC routes received audio through a separate internal pipeline that tab capture doesn't intercept. This is a known platform-level limitation, not a code bug.
+
+How TwinMind solves this in their product: their mobile app runs on-device with their Ear-3 ASR model and physically captures room audio — the phone mic hears both the local speaker and the remote participant's voice coming through laptop speakers. Their planned native desktop app will have system-level audio access that browsers fundamentally cannot provide. Both approaches require leaving the browser sandbox entirely.
+
+The practical workaround for virtual interviews: the suggestion engine generates useful nudges from the speaker's side alone. Narrating or paraphrasing what the other person says ("so you're asking about X...") feeds their context into the transcript naturally.
+
+### No speaker diarization
+The app transcribes speech as a single stream without identifying who said what. TwinMind's Ear-3 model achieves a 3.8% Speaker Diarization Error Rate — world-class performance that comes from a dedicated pipeline: voice activity detection, speaker embedding extraction (pitch, tone, cadence fingerprinting), and clustering to label segments by speaker.
+
+Whisper Large V3 does not perform diarization — it transcribes only. Adding diarization would require either a separate diarization API (AssemblyAI, Deepgram, or Pyannote) or TwinMind's own Ear-3 API (which they've announced plans to open). It also conflicts architecturally with our real-time 30s chunk approach since diarization typically needs a complete audio segment to accurately cluster speakers. It's a meaningful pipeline change, not a drop-in add-on.
+
 ---
 
 ## Responsiveness & Accessibility
